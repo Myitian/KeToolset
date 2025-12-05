@@ -1,4 +1,5 @@
 <Solution>
-  <Project Path="MegaDownloaderXmlGenerator/MegaDownloaderXmlGenerator.csproj" />
   <Project Path="KeSpider/KeSpider.csproj" />
+  <Project Path="MegaDownloaderTaskReset/MegaDownloaderTaskReset.csproj" Id="66cc9e98-d59e-4840-9d67-b7b8dfd8f652" />
+  <Project Path="MegaDownloaderXmlGenerator/MegaDownloaderXmlGenerator.csproj" />
 </Solution>

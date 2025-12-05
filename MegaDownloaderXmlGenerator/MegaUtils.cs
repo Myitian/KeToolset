@@ -73,17 +73,13 @@ public static class MegaUtils
                 byte[] eData = Base64Url.DecodeFromChars(k.AsSpan(colon + 1));
                 byte[] dData = aes.DecryptEcb(eData, PaddingMode.Zeros);
                 Span<Int128> i128view = MemoryMarshal.Cast<byte, Int128>(dData.AsSpan());
-                switch (i128view.Length)
+                Int128 key = i128view.Length switch
                 {
-                    case 0:
-                        continue;
-                    case 1:
-                        break;
-                    default:
-                        i128view[0] ^= i128view[1];
-                        break;
-                }
-                string text = DecryptEntryInfo(item.A, MemoryMarshal.AsBytes(i128view[..1]));
+                    0 => 0, // should not happen!
+                    1 => i128view[0],
+                    _ => i128view[0] ^ i128view[1],
+                };
+                string text = DecryptEntryInfo(item.A, MemoryMarshal.AsBytes(new ReadOnlySpan<Int128>(in key)));
                 EntryName name = JsonSerializer.Deserialize(text.AsSpan(4), AppJsonSerializerContext.Default.EntryName);
                 fileLinkList[h] = (name.N ?? "", item.P);
                 if (item.T is EntryType.File)

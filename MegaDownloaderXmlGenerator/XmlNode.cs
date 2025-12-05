@@ -24,7 +24,11 @@ public sealed class XmlNode(string name)
     }
     public XmlNode AppendAttribute(string key, string value)
     {
-        Attributes.Add(new(key, value));
+        return AppendAttribute(new(key, value));
+    }
+    public XmlNode AppendAttribute(KeyValuePair<string, string> attribute)
+    {
+        Attributes.Add(attribute);
         return this;
     }
     public XmlNode SetValue(string text)

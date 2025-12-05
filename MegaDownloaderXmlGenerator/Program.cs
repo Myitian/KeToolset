@@ -1,5 +1,4 @@
 ﻿using System.Buffers.Binary;
-using System.IO;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
@@ -10,13 +9,16 @@ namespace MegaDownloaderXmlGenerator;
 
 partial class Program
 {
+    static readonly KeyValuePair<string, string> v2 = new("v", "2");
+
     [GeneratedRegex(@"https?://mega(?:\.co)?\.nz/[^""'<>\s]+#[a-zA-Z0-9\-_]+")]
     private static partial Regex RegMega();
     private static async Task<int> Main(string[] args)
     {
+        Console.InputEncoding = Encoding.UTF8;
         Console.OutputEncoding = Encoding.UTF8;
 #pragma warning disable CA1859 // it can be an array or a list, but roslyn bugged here.
-        ICollection<string> directories;
+        IList<string> directories;
 #pragma warning restore CA1859
         if (args.Length > 0)
             directories = args;
@@ -34,6 +36,28 @@ partial class Program
             directories = [];
             while (Console.In.ReadLine() is string line and not "")
                 directories.Add(line.AsSpan().Trim().Trim('"').ToString());
+        }
+        if (directories is ["*DEBUG", ..])
+        {
+            while (Console.ReadLine() is string line and not "")
+            {
+                if (!MegaUtils.ExtraerIdKey(line.AsMemory(), out ReadOnlyMemory<char> id, out ReadOnlyMemory<char> key))
+                    Console.Error.WriteLine("Invalid URL");
+                else
+                {
+                    Console.Error.WriteLine(id.Span);
+                    Console.Error.WriteLine(key.Span);
+                    if (line.Contains("/folder/"))
+                    {
+                        foreach ((string fileUrl, string filePath) in await MegaUtils.ResolveFolderAsync(id, key))
+                        {
+                            Console.Error.WriteLine(fileUrl);
+                            Console.Error.WriteLine(filePath);
+                        }
+                    }
+                }
+            }
+            return 1;
         }
         EnumerationOptions options = new()
         {
@@ -63,15 +87,23 @@ partial class Program
                     files.Add(CreateFileNode(id.Span, key.Span, directory, url));
                 else
                 {
-                    foreach ((string fileUrl, string filePath) in await MegaUtils.ResolveFolderAsync(id, key))
+                    try
                     {
-                        Console.Error.WriteLine($"Loading {fileUrl}...");
-                        if (!MegaUtils.ExtraerIdKey(fileUrl.AsMemory(), out id, out key))
-                            continue;
-                        files.Add(CreateFileNode(id.Span, key.Span, directory, fileUrl, Path.GetDirectoryName(filePath)));
+                        foreach ((string fileUrl, string filePath) in await MegaUtils.ResolveFolderAsync(id, key))
+                        {
+                            Console.Error.WriteLine($"Loading {fileUrl}...");
+                            if (!MegaUtils.ExtraerIdKey(fileUrl.AsMemory(), out id, out key))
+                                continue;
+                            files.Add(CreateFileNode(id.Span, key.Span, directory, fileUrl, Path.GetDirectoryName(filePath)));
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.Error.WriteLine(ex.Message);
                     }
                 }
             }
+            Console.Error.Flush();
         }
         XmlNode root = new("ListaPaquetes");
         foreach ((string folder, List<XmlNode> files) in folders)
@@ -100,7 +132,7 @@ partial class Program
         static XmlNode CreateFileNode(ReadOnlySpan<char> id, ReadOnlySpan<char> key, string directory, string url, string? path = null)
         {
             return new XmlNode("Fichero")
-                .AppendAttribute("v", "2")
+                .AppendAttribute(v2)
                 .AppendChild(new XmlNode("FileID").SetValue(EncryptString(id)))
                 .AppendChild(new XmlNode("FileKey").SetValue(EncryptString(key)))
                 .AppendChild(new XmlNode("URL").SetValue(EncryptString(url)))
@@ -121,11 +153,6 @@ partial class Program
             bytes = MemoryMarshal.AsBytes(chars);
         }
         return Convert.ToBase64String(ProtectedData.Protect(bytes, DataProtectionScope.CurrentUser, Entropy));
-    }
-    public static string Decrypt(string data)
-    {
-        byte[] bytes = ProtectedData.Unprotect(Convert.FromBase64String(data), DataProtectionScope.CurrentUser, Entropy);
-        return Encoding.Unicode.GetString(bytes);
     }
     static ReadOnlySpan<byte> Entropy => [
 //      G         *         S         N         A         f         h         H
