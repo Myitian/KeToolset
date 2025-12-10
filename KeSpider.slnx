@@ -1,6 +1,6 @@
 <Solution>
-  <Project Path="FFmpegCheck/FFmpegCheck.csproj" Id="dce2d8ab-6577-4a70-a4b8-da16d1b31ee3" />
+  <Project Path="FFmpegCheck/FFmpegCheck.csproj" />
   <Project Path="KeSpider/KeSpider.csproj" />
-  <Project Path="MegaDownloaderTaskReset/MegaDownloaderTaskReset.csproj" Id="66cc9e98-d59e-4840-9d67-b7b8dfd8f652" />
+  <Project Path="MegaDownloaderTaskReset/MegaDownloaderTaskReset.csproj" />
   <Project Path="MegaDownloaderXmlGenerator/MegaDownloaderXmlGenerator.csproj" />
 </Solution>

@@ -1,4 +1,5 @@
-﻿using System.Net;
+﻿using System.Diagnostics;
+using System.Net;
 using System.Xml;
 
 namespace MegaDownloaderTaskReset;
@@ -10,6 +11,7 @@ namespace MegaDownloaderTaskReset;
 /// <item>no other type of elements</item>
 /// </list>
 /// </summary>
+[DebuggerDisplay("Name = {Name}, Value = {Value}, ChildCount = {ChildNodes.Count}")]
 public sealed class XmlNode(string name)
 {
     private readonly Dictionary<string, XmlNode> _map = [];
@@ -22,6 +24,14 @@ public sealed class XmlNode(string name)
     public override string ToString()
     {
         return $"<{Name}>{WebUtility.HtmlEncode(Value)} @ {ChildNodes.Count} childs";
+    }
+    public XmlNode GetChildOrAddNew(string name)
+    {
+        if(_map.TryGetValue(name, out XmlNode? node))
+            return node;
+        node = new(name);
+        AppendChild(node);
+        return node;
     }
     public XmlNode AppendChild(XmlNode node)
     {
@@ -82,10 +92,7 @@ public sealed class XmlNode(string name)
                         if (child is not null)
                             node.AppendChild(child);
                         else if (childtext is not null)
-                        {
                             node.Value = childtext;
-                            reader.Read();
-                        }
                         else
                             break;
                     }

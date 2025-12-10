@@ -1,6 +1,6 @@
 ﻿using System.Runtime.InteropServices;
 
-namespace KeSpider;
+namespace MegaDownloaderTaskReset;
 
 public static partial class HardLink
 {

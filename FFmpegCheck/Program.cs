@@ -1,7 +1,5 @@
 ﻿using SimpleArgs;
-using System;
 using System.Diagnostics;
-using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -11,9 +9,18 @@ namespace FFmpegCheck;
 class Program
 {
     static readonly string NullDevice = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "NUL" : "/dev/null";
+    static readonly string[] BasicArgs = [
+        "-hide_banner",
+        "-err_detect",
+        "explode",
+        "-xerror",
+        "-v",
+        "error",
+        "-stats"];
     static readonly EnumerationOptions options = new()
     {
-        RecurseSubdirectories = true,
+        // When RecurseSubdirectories = true, the return order does not conform to the design expectation.
+        RecurseSubdirectories = false,
         IgnoreInaccessible = true,
         MatchType = MatchType.Simple
     };
@@ -47,6 +54,10 @@ class Program
                 new("--decoder", 1, "-d")
                 {
                     Info = "path: ffmpeg codec:v (optional)"
+                },
+                new("--dry-run", 1, "-dry")
+                {
+                    Info = "boolean: output file list only (optional, default: false)"
                 });
             if (argx.Results.ContainsKey("--help") || argx.UnknownArgs.Count == 0)
             {
@@ -54,8 +65,8 @@ class Program
                 Console.Error.WriteLine("""
 
 
-                remaining arguments: input files/folders
-                """);
+                    remaining arguments: input files/folders
+                    """);
                 return 1;
             }
             Regex? path_filter = null;
@@ -70,6 +81,8 @@ class Program
                 hwaccel = null;
             if (!argx.TryGetString("--decoder", out string? decoder))
                 decoder = null;
+            if (!argx.TryGetBoolean("--dry-run", out bool dry))
+                dry = false;
             if (Path.GetDirectoryName(output) is string directory and not "")
                 Directory.CreateDirectory(directory);
             bool waiting_checkpoint = !resume_checkpoint.IsEmpty;
@@ -77,7 +90,7 @@ class Program
             using StreamWriter sw = new(fs, Encoding.UTF8);
             foreach (string file in argx.UnknownArgs
                 .SelectMany(it => File.Exists(it) ? [Path.GetFullPath(it)]
-                                : Directory.Exists(it) ? Directory.EnumerateFiles(it, "*", options)
+                                : Directory.Exists(it) ? EnumerateAllFilesDefaultOrder(it)
                                 : [])
                 .Distinct()
                 .Where(it => path_filter?.IsMatch(it) is not false))
@@ -90,19 +103,27 @@ class Program
                 }
                 Console.ResetColor();
                 Console.Error.WriteLine(file);
-                using Process? process = Process.Start(CreateProcessStartInfo(file, hwaccel, decoder));
-                process?.WaitForExit();
-                if (process?.ExitCode is 0)
+                if (dry)
                 {
-                    Console.ForegroundColor = ConsoleColor.Green;
-                    Console.Error.WriteLine("OK");
+                    sw.WriteLine(file);
+                    sw.Flush();
                 }
                 else
                 {
-                    Console.ForegroundColor = ConsoleColor.Red;
-                    Console.Error.WriteLine("ERROR");
-                    sw.WriteLine(file);
-                    sw.Flush();
+                    using Process? process = Process.Start(CreateProcessStartInfo(file, hwaccel, decoder));
+                    process?.WaitForExit();
+                    if (process?.ExitCode is 0)
+                    {
+                        Console.ForegroundColor = ConsoleColor.Green;
+                        Console.Error.WriteLine("OK");
+                    }
+                    else
+                    {
+                        Console.ForegroundColor = ConsoleColor.Red;
+                        Console.Error.WriteLine("ERROR");
+                        sw.WriteLine(file);
+                        sw.Flush();
+                    }
                 }
             }
             return 0;
@@ -119,20 +140,27 @@ class Program
             Console.ResetColor();
         }
     }
+    static IEnumerable<string> EnumerateAllFilesDefaultOrder(string directory)
+    {
+        foreach (string fsi in Directory.EnumerateFileSystemEntries(directory, "*", options))
+        {
+            if (File.Exists(fsi))
+                yield return fsi;
+            else if (Directory.Exists(fsi))
+            {
+                foreach (string child in EnumerateAllFilesDefaultOrder(fsi))
+                    yield return child;
+            }
+        }
+    }
     static ProcessStartInfo CreateProcessStartInfo(string file, string? hwaccel = null, string? decoder = null)
     {
-        ProcessStartInfo psi = new("ffmpeg")
+        ProcessStartInfo psi = new("ffmpeg", BasicArgs)
         {
             UseShellExecute = false,
             CreateNoWindow = false
         };
-        psi.ArgumentList.Add("-hide_banner");
-        psi.ArgumentList.Add("-err_detect");
-        psi.ArgumentList.Add("explode");
-        psi.ArgumentList.Add("-xerror");
-        psi.ArgumentList.Add("-v");
-        psi.ArgumentList.Add("error");
-        psi.ArgumentList.Add("-stats");
+
         if (hwaccel is not null)
         {
             psi.ArgumentList.Add("-hwaccel");

@@ -1,48 +1,49 @@
-﻿namespace MegaDownloaderTaskReset;
+﻿using System.Collections;
+
+namespace MegaDownloaderTaskReset;
 
 static class FieldComparers
 {
     public static readonly ChildNumberValueComparer<int> PriorityAsc = new("Prioridad");
-    public static readonly DescComparer<XmlNode, ChildNumberValueComparer<int>> PriorityDesc = new(PriorityAsc);
+    public static readonly DescComparer<XmlNode> PriorityDesc = new(PriorityAsc);
     public static readonly ChildNumberValueComparer<long> SizeAsc = new("TamanoBytes");
-    public static readonly DescComparer<XmlNode, ChildNumberValueComparer<long>> SizeDesc = new(SizeAsc);
+    public static readonly DescComparer<XmlNode> SizeDesc = new(SizeAsc);
     public static readonly ChildNumberValueComparer<decimal> PercentAsc = new("Porcentaje");
-    public static readonly DescComparer<XmlNode, ChildNumberValueComparer<decimal>> PercentDesc = new(PercentAsc);
+    public static readonly DescComparer<XmlNode> PercentDesc = new(PercentAsc);
 
     public static readonly ChildStringValueComparer PackageNameAsc = new("Nombre");
-    public static readonly DescComparer<XmlNode, ChildStringValueComparer> PackageNameDesc = new(PackageNameAsc);
+    public static readonly DescComparer<XmlNode> PackageNameDesc = new(PackageNameAsc);
     public static readonly ChildStringValueComparer PackageLocalPathAsc = new("RutaLocal");
-    public static readonly DescComparer<XmlNode, ChildStringValueComparer> PackageLocalPathDesc = new(PackageLocalPathAsc);
+    public static readonly DescComparer<XmlNode> PackageLocalPathDesc = new(PackageLocalPathAsc);
 
     public static readonly ChildStringValueComparer FileNameAsc = new("NombreFichero");
-    public static readonly DescComparer<XmlNode, ChildStringValueComparer> FileNameDesc = new(FileNameAsc);
+    public static readonly DescComparer<XmlNode> FileNameDesc = new(FileNameAsc);
     public static readonly ChildStringValue2Comparer FileLocalPathAsc = new("RutaLocal", "NombreFichero");
-    public static readonly DescComparer<XmlNode, ChildStringValue2Comparer> FileLocalPathDesc = new(FileLocalPathAsc);
+    public static readonly DescComparer<XmlNode> FileLocalPathDesc = new(FileLocalPathAsc);
     public static readonly ChildStringValue2Comparer FileRelativePathAsc = new("RutaRelativa", "NombreFichero");
-    public static readonly DescComparer<XmlNode, ChildStringValue2Comparer> FileRelativePathDesc = new(FileRelativePathAsc);
+    public static readonly DescComparer<XmlNode> FileRelativePathDesc = new(FileRelativePathAsc);
     public static readonly ChildStringValueWithPreprocessorComparer FileUrlAsc = new("URL", Program.DecryptString);
-    public static readonly DescComparer<XmlNode, ChildStringValueWithPreprocessorComparer> FileUrlDesc = new(FileUrlAsc);
+    public static readonly DescComparer<XmlNode> FileUrlDesc = new(FileUrlAsc);
 
-    public readonly struct DescComparer<T, TComparer>(TComparer comparer) : IComparer<T>
-        where TComparer : IComparer<T>
+    public sealed class DescComparer<T>(IComparer<T> comparer) : IComparer<T>
     {
-        public readonly int Compare(T? x, T? y)
+        public int Compare(T? x, T? y)
         {
             return comparer.Compare(y, x);
         }
     }
-    public readonly struct ChildStringValueComparer(string name) : IComparer<XmlNode>
+    public sealed class ChildStringValueComparer(string name) : IComparer<XmlNode>
     {
-        public readonly int Compare(XmlNode? x, XmlNode? y)
+        public int Compare(XmlNode? x, XmlNode? y)
         {
             return StringComparer.OrdinalIgnoreCase.Compare(
                 x?[name]?.Value,
                 y?[name]?.Value);
         }
     }
-    public readonly struct ChildStringValue2Comparer(string name1, string name2) : IComparer<XmlNode>
+    public sealed class ChildStringValue2Comparer(string name1, string name2) : IComparer<XmlNode>
     {
-        public readonly int Compare(XmlNode? x, XmlNode? y)
+        public int Compare(XmlNode? x, XmlNode? y)
         {
             int i = StringComparer.OrdinalIgnoreCase.Compare(
                 x?[name1]?.Value,
@@ -52,26 +53,25 @@ static class FieldComparers
                 y?[name2]?.Value);
         }
     }
-    public readonly struct ChildStringValueWithPreprocessorComparer(string name, Func<string, string> preprocessor) : IComparer<XmlNode>
+    public sealed class ChildStringValueWithPreprocessorComparer(string name, Func<string, string> preprocessor) : IComparer<XmlNode>
     {
-        public readonly int Compare(XmlNode? x, XmlNode? y)
+        public int Compare(XmlNode? x, XmlNode? y)
         {
             return StringComparer.OrdinalIgnoreCase.Compare(
                 preprocessor.InvokeWhenNotNull(x?[name]?.Value),
                 preprocessor.InvokeWhenNotNull(y?[name]?.Value));
         }
     }
-    public readonly struct ChildNumberValueComparer<T>(string name) : IComparer<XmlNode>
+    public sealed class ChildNumberValueComparer<T>(string name) : IComparer<XmlNode>
         where T : struct, IParsable<T>
     {
-        public readonly int Compare(XmlNode? x, XmlNode? y)
+        public int Compare(XmlNode? x, XmlNode? y)
         {
             return Nullable.Compare<T>(
                 T.TryParse(x?[name]?.Value, null, out T xn) ? xn : null,
                 T.TryParse(y?[name]?.Value, null, out T yn) ? yn : null);
         }
     }
-
     static TResult? InvokeWhenNotNull<T, TResult>(this Func<T, TResult> func, T? arg)
     {
         if (arg is null)
