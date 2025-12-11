@@ -52,10 +52,11 @@ class Program
         }
         else
         {
-            foreach (ReadOnlySpan<char> item in path.Split(
-                Path.PathSeparator,
-                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            foreach (Range range in path.Split(Path.PathSeparator))
             {
+                ReadOnlySpan<char> item = path[range].Trim();
+                if (item.IsEmpty)
+                    continue;
                 if (!a2c)
                 {
                     string exePath = Path.Combine(item.ToString(), "aria2c");
