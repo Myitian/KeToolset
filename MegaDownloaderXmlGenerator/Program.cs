@@ -41,7 +41,7 @@ partial class Program
         {
             while (Console.ReadLine() is string line and not "")
             {
-                if (!MegaUtils.ExtraerIdKey(line.AsMemory(), out ReadOnlyMemory<char> id, out ReadOnlyMemory<char> key))
+                if (!MegaUtils.ExtractIdKey(line.AsMemory(), out ReadOnlyMemory<char> id, out ReadOnlyMemory<char> key))
                     Console.Error.WriteLine("Invalid URL");
                 else
                 {
@@ -77,7 +77,7 @@ partial class Program
             .Select(it => (it.Item1, it.Item2.Value)))
         {
             Console.Error.WriteLine($"Loading {url}...");
-            if (!MegaUtils.ExtraerIdKey(url.AsMemory(), out ReadOnlyMemory<char> id, out ReadOnlyMemory<char> key))
+            if (!MegaUtils.ExtractIdKey(url.AsMemory(), out ReadOnlyMemory<char> id, out ReadOnlyMemory<char> key))
                 Console.Error.WriteLine("Warning: Invalid URL");
             else
             {
@@ -92,7 +92,7 @@ partial class Program
                         foreach ((string fileUrl, string filePath) in await MegaUtils.ResolveFolderAsync(id, key))
                         {
                             Console.Error.WriteLine($"Loading {fileUrl}...");
-                            if (!MegaUtils.ExtraerIdKey(fileUrl.AsMemory(), out id, out key))
+                            if (!MegaUtils.ExtractIdKey(fileUrl.AsMemory(), out id, out key))
                                 continue;
                             files.Add(CreateFileNode(id.Span, key.Span, directory, fileUrl, Path.GetDirectoryName(filePath)));
                         }

@@ -15,7 +15,7 @@ public static class MegaUtils
     private static readonly HttpClient http = new();
     private static readonly ReadOnlyMemoryContent content = new("""[{"a":"f","c":1,"r":1}]"""u8.ToArray());
 
-    public static bool ExtraerIdKey(ReadOnlyMemory<char> url, out ReadOnlyMemory<char> id, out ReadOnlyMemory<char> key)
+    public static bool ExtractIdKey(ReadOnlyMemory<char> url, out ReadOnlyMemory<char> id, out ReadOnlyMemory<char> key)
     {
         id = default;
         key = default;
@@ -76,8 +76,8 @@ public static class MegaUtils
                 Int128 key = i128view.Length switch
                 {
                     0 => 0, // should not happen!
-                    1 => i128view[0],
-                    _ => i128view[0] ^ i128view[1],
+                    1 => i128view[0], // folder key
+                    _ => i128view[0] ^ i128view[1], // file key
                 };
                 string text = DecryptEntryInfo(item.A, MemoryMarshal.AsBytes(new ReadOnlySpan<Int128>(in key)));
                 EntryName name = JsonSerializer.Deserialize(text.AsSpan(4), AppJsonSerializerContext.Default.EntryName);
@@ -99,7 +99,7 @@ public static class MegaUtils
     {
         using Aes aes = Aes.Create();
         aes.SetKey(key);
-        // Yes, MEGA cloud is using an IV of all zeros for AES-CBC!
+        // MEGA Cloud appears to be using an all-zero IV for AES-CBC.
         ReadOnlySpan<byte> plaintext = aes.DecryptCbc(
             Base64Url.DecodeFromChars(cipertext),
             "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"u8,
