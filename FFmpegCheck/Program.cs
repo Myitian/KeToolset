@@ -159,7 +159,7 @@ class Program
             try
             {
                 FileID id = FileID.GetFromFile(file);
-                if (id != FileID.Invalid && !visited.Add(id))
+                if (!(id.IsInvalid || visited.Add(id)))
                     return false;
             }
             catch { }

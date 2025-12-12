@@ -3,27 +3,23 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 
-[assembly: DisableRuntimeMarshalling]
-
 namespace FFmpegCheck;
 
-public partial struct FileID(ulong volumeIndex, UInt128 fileIndex) : IEquatable<FileID>
+public readonly partial struct FileID(ulong volumeIndex, UInt128 fileIndex) : IEquatable<FileID>
 {
     public static FileID Invalid => new(ulong.MaxValue, UInt128.MaxValue);
-    public ulong VolumeIndex = volumeIndex;
-    public UInt128 FileIndex = fileIndex;
+    public readonly ulong VolumeIndex = volumeIndex;
+    public readonly UInt128 FileIndex = fileIndex;
+    public readonly bool IsInvalid => VolumeIndex == ulong.MaxValue && FileIndex == UInt128.MaxValue;
+    public override readonly string ToString() => $"<{VolumeIndex:X8}@{FileIndex:X16}>";
 
     public static FileID GetFromFile(string file)
     {
-        if (OperatingSystem.IsWindows())
-        {
-            if (OperatingSystem.IsWindowsVersionAtLeast(6, 2)) // Windows 8
-                return FILE_ID_INFO.GetFileID(file); // ReFS use 128-bit ID.
-            return BY_HANDLE_FILE_INFORMATION.GetFileID(file);
-        }
-        // may support other systems in the future.
-        // e.g. stat()
-        return Invalid;
+        if (!OperatingSystem.IsWindows())
+            return Stat.GetFileID(file); // call SystemNative_Stat (in native part in .NET runtime)
+        if (OperatingSystem.IsWindowsVersionAtLeast(6, 2)) // Windows 8+
+            return FILE_ID_INFO.GetFileID(file); // ReFS use 128-bit ID.
+        return BY_HANDLE_FILE_INFORMATION.GetFileID(file); // Other Windows
     }
 
     public readonly bool Equals(FileID other)
@@ -39,21 +35,21 @@ public partial struct FileID(ulong volumeIndex, UInt128 fileIndex) : IEquatable<
 
     [SupportedOSPlatform("windows")]
     [StructLayout(LayoutKind.Sequential)]
-    private partial struct BY_HANDLE_FILE_INFORMATION
+    private readonly partial struct BY_HANDLE_FILE_INFORMATION
     {
-        public uint _0;
-        public uint _1;
-        public uint _2;
-        public uint _3;
-        public uint _4;
-        public uint _5;
-        public uint _6;
-        public uint VolumeSerialNumber;
-        public uint _8;
-        public uint _9;
-        public uint _A;
-        public uint FileIndexHigh;
-        public uint FileIndexLow;
+        private readonly uint _A; // useless in this project
+        private readonly uint _B; // useless in this project
+        private readonly uint _C; // useless in this project
+        private readonly uint _D; // useless in this project
+        private readonly uint _E; // useless in this project
+        private readonly uint _F; // useless in this project
+        private readonly uint _G; // useless in this project
+        private readonly uint VolumeSerialNumber;
+        private readonly uint _I; // useless in this project
+        private readonly uint _J; // useless in this project
+        private readonly uint _K; // useless in this project
+        private readonly uint FileIndexHigh;
+        private readonly uint FileIndexLow;
 
         [LibraryImport("kernel32", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
@@ -61,7 +57,7 @@ public partial struct FileID(ulong volumeIndex, UInt128 fileIndex) : IEquatable<
             SafeFileHandle hFile,
             out BY_HANDLE_FILE_INFORMATION lpFileInformation);
 
-        public static FileID GetFileID(string file)
+        internal static FileID GetFileID(string file)
         {
             if (File.Exists(file))
                 using (FileStream fs = File.Open(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
@@ -71,13 +67,13 @@ public partial struct FileID(ulong volumeIndex, UInt128 fileIndex) : IEquatable<
         }
     }
 
-    [SupportedOSPlatform("windows6.2")]
+    [SupportedOSPlatform("windows6.2")] // windows6.2 = Windows 8
     [StructLayout(LayoutKind.Sequential)]
-    private partial struct FILE_ID_INFO
+    private readonly partial struct FILE_ID_INFO
     {
-        public ulong VolumeSerialNumber;
-        public ulong FileIdLow;
-        public ulong FileIdHigh;
+        private readonly ulong VolumeSerialNumber;
+        private readonly ulong FileIdLow;
+        private readonly ulong FileIdHigh;
 
         [LibraryImport("kernel32", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
@@ -87,12 +83,49 @@ public partial struct FileID(ulong volumeIndex, UInt128 fileIndex) : IEquatable<
             out FILE_ID_INFO lpFileInformation,
             int dwBufferSize);
 
-        public static FileID GetFileID(string file)
+        internal static FileID GetFileID(string file)
         {
+            const int FileIdInfo = 18;
             if (File.Exists(file))
                 using (FileStream fs = File.Open(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
-                    if (GetFileInformationByHandleEx(fs.SafeFileHandle, 18, out FILE_ID_INFO info, Unsafe.SizeOf<FILE_ID_INFO>()))
+                    if (GetFileInformationByHandleEx(fs.SafeFileHandle, FileIdInfo, out FILE_ID_INFO info, Unsafe.SizeOf<FILE_ID_INFO>()))
                         return new(info.VolumeSerialNumber, new(info.FileIdHigh, info.FileIdLow));
+            return Invalid;
+        }
+    }
+
+    // compatible with .NET 7+, see
+    // https://github.com/dotnet/runtime/blob/main/src/libraries/Common/src/Interop/Unix/System.Native/Interop.Stat.cs
+    // https://github.com/dotnet/runtime/blob/main/src/native/libs/System.Native/pal_io.h
+    [UnsupportedOSPlatform("windows")]
+    [StructLayout(LayoutKind.Sequential)]
+    internal readonly partial struct Stat
+    {
+        private readonly int _A; // useless in this project
+        private readonly int _B; // useless in this project
+        private readonly uint _C; // useless in this project
+        private readonly uint _D; // useless in this project
+        private readonly long _E; // useless in this project
+        private readonly long _F; // useless in this project
+        private readonly long _G; // useless in this project
+        private readonly long _H; // useless in this project
+        private readonly long _I; // useless in this project
+        private readonly long _J; // useless in this project
+        private readonly long _K; // useless in this project
+        private readonly long _L; // useless in this project
+        private readonly long _M; // useless in this project
+        private readonly long Dev;
+        private readonly long _O; // useless in this project
+        private readonly long Ino;
+        private readonly uint _Q; // useless in this project
+
+        [LibraryImport("libSystem.Native", StringMarshalling = StringMarshalling.Utf8, SetLastError = true)]
+        private static partial int SystemNative_Stat(string path, out Stat output);
+
+        internal static FileID GetFileID(string file)
+        {
+            if (SystemNative_Stat(file, out Stat stat) == 0)
+                return new((ulong)stat.Dev, (ulong)stat.Ino);
             return Invalid;
         }
     }
