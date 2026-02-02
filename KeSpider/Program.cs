@@ -356,7 +356,7 @@ static class Program
                 goto END;
             }
             ReadOnlySpan<char> rawName = Utils.XTrim(postRoot.Post.Title);
-            string pagename = Utils.ReplaceInvalidFileNameChars(rawName);
+            string pagename = Utils.ReplaceInvalidFileNameChars(rawName.TrimEnd().TrimEnd('.'));
             DateTime datetime = Utils.NormalizeTime(postRoot.Post.Published).ToLocalTime();
             DateTime datetimeEdited = Utils.NormalizeTime(postRoot.Post.Edited ?? postRoot.Post.Published).ToLocalTime();
             string pagenameWithID = $"{post.ID}_{pagename}";
