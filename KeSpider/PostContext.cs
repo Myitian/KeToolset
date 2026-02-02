@@ -78,7 +78,7 @@ sealed class PostContext(
         bool first = !File.Exists(path);
         foreach (string oldName in Directory.EnumerateFiles(PageFolderPath, $"{prefixPrefix}{index}_*", Program.simpleNonRecursiveEnumeration)
                            .Concat(Directory.EnumerateFiles(PageFolderPath, $"{prefixPrefix}{index:D3}_*", Program.simpleNonRecursiveEnumeration))
-                           .Concat(Directory.EnumerateFiles(PageFolderPath, $"{index:D3}_*{ext}", Program.simpleNonRecursiveEnumeration))
+                           .Concat(Directory.EnumerateFiles(PageFolderPath, $"{index}_*{ext}", Program.simpleNonRecursiveEnumeration))
                            .Concat(Directory.EnumerateFiles(PageFolderPath, $"{index:D3}_*{ext}", Program.simpleNonRecursiveEnumeration))
                            .Concat(Directory.EnumerateFiles(PageFolderPath, unprefixedName, Program.simpleNonRecursiveEnumeration))
                            .Where(it => !Path.GetFileName(it.AsSpan()).Equals(finalName, StringComparison.Ordinal)))
