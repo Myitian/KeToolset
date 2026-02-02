@@ -1,5 +1,7 @@
 <Solution>
   <Project Path="FFmpegCheck/FFmpegCheck.csproj" />
+  <Project Path="KeCore/KeCore.csproj" />
+  <Project Path="KeList/KeList.csproj" />
   <Project Path="KeSpider/KeSpider.csproj" />
   <Project Path="MegaDownloaderTaskReset/MegaDownloaderTaskReset.csproj" />
   <Project Path="MegaDownloaderXmlGenerator/MegaDownloaderXmlGenerator.csproj" />

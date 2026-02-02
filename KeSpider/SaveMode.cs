@@ -1,6 +1,6 @@
 namespace KeSpider;
 
-public enum SaveMode
+enum SaveMode
 {
     Replace,
     Skip,

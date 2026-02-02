@@ -1,9 +1,10 @@
+using System.Collections.Immutable;
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
 
-namespace KeSpider.API;
+namespace KeCore.API;
 
-public struct Attachment
+public record struct Attachment
 {
     [JsonPropertyName("name")]
     public string Name { get; set; }
@@ -18,7 +19,7 @@ public struct Attachment
     public string? Server { get; set; }
 }
 
-public struct Embed
+public record struct Embed
 {
     [JsonPropertyName("url")]
     public string? URL { get; set; }
@@ -30,7 +31,7 @@ public struct Embed
     public object? Description { get; set; }
 }
 
-public struct Post
+public record struct Post
 {
     [JsonPropertyName("title")]
     public string Title { get; set; }
@@ -51,7 +52,7 @@ public struct Post
     public Embed Embed { get; set; }
 
     [JsonPropertyName("attachments")]
-    public List<Attachment> Attachments { get; set; }
+    public ImmutableArray<Attachment> Attachments { get; set; }
 }
 
 public class PostRoot
@@ -60,26 +61,32 @@ public class PostRoot
     public Post Post { get; set; }
 
     [JsonPropertyName("attachments")]
-    public List<Attachment>? Attachments { get; set; }
+    public ImmutableArray<Attachment> Attachments { get; set; }
 
     [JsonPropertyName("previews")]
-    public List<Attachment>? Previews { get; set; }
+    public ImmutableArray<Attachment> Previews { get; set; }
 
     public static async Task<(byte[], PostRoot?)> Request(HttpClient client, string domain, string service, string user, string post)
     {
-        string url = $"https://{domain}/api/v1/{service}/user/{user}/post/{post}";
+        ArgumentNullException.ThrowIfNull(client);
+        Uri url = new UriBuilder()
+        {
+            Scheme = "https",
+            Host = domain,
+            Path = $"/api/v1/{service}/user/{user}/post/{post}"
+        }.Uri;
         while (true)
         {
             Console.WriteLine($"GET {url}");
-            using HttpResponseMessage resp = await client.GetAsync(url, HttpCompletionOption.ResponseContentRead);
+            using HttpResponseMessage resp = await client.GetAsync(url, HttpCompletionOption.ResponseContentRead).C();
             if (resp.IsSuccessStatusCode)
             {
                 return (
-                    await resp.Content.ReadAsByteArrayAsync(),
-                    await resp.Content.ReadFromJsonAsync(AppJsonSerializerContext.Default.PostRoot));
+                    await resp.Content.ReadAsByteArrayAsync().C(),
+                    await resp.Content.ReadFromJsonAsync(AppJsonSerializerContext.Default.PostRoot).C());
             }
             Console.WriteLine($"HTTP STATUS CODE {resp.StatusCode}");
-            Thread.Sleep(1000);
+            await Task.Delay(1000).C();
         }
     }
 }

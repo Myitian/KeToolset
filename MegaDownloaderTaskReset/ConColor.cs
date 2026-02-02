@@ -4,7 +4,7 @@ using System.Runtime.CompilerServices;
 namespace MegaDownloaderTaskReset;
 
 [DebuggerDisplay("Foreground = {Foreground}, Background = {Background}, ResetColor = {ResetColor}, ANSI = {ToString()}")]
-public struct ConColor
+struct ConColor
 {
     public static ReadOnlySpan<byte> ConsoleColorToAnsiCode => [
         00, // Black,
@@ -139,7 +139,7 @@ public struct ConColor
     }
 
     [InterpolatedStringHandler]
-    public readonly struct InterpolationHandler
+    internal readonly struct InterpolationHandler
     {
         private readonly TextWriter _writer;
 

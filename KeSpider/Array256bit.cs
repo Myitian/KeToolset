@@ -3,7 +3,7 @@
 namespace KeSpider;
 
 [InlineArray(32)]
-public struct Array256bit : IEquatable<Array256bit>
+struct Array256bit : IEquatable<Array256bit>
 {
     private byte _;
 

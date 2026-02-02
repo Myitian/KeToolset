@@ -2,13 +2,13 @@
 
 namespace KeSpider.ZipEncodingDetector;
 
-public class ZipEntryNameStream(IEnumerable<ZipArchiveEntry> entries) : Stream
+sealed class ZipEntryNameStream(IEnumerable<ZipArchiveEntry> entries) : Stream
 {
     private readonly IEnumerator<ZipArchiveEntry> enumerator
         = entries.GetEnumerator();
-    private byte[]? bytes = null;
-    private int offset = 0;
-    private bool disposed = false;
+    private byte[]? bytes;
+    private int offset;
+    private bool disposed;
     public override bool CanRead => !disposed;
     public override bool CanSeek => false;
     public override bool CanWrite => false;
@@ -80,5 +80,6 @@ public class ZipEntryNameStream(IEnumerable<ZipArchiveEntry> entries) : Stream
         enumerator.Dispose();
         bytes = null;
         disposed = true;
+        base.Dispose(disposing);
     }
 }

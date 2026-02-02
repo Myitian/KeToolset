@@ -10,7 +10,7 @@ using System.Text.Json;
 
 namespace MegaDownloaderXmlGenerator;
 
-public static class MegaUtils
+static class MegaUtils
 {
     private static readonly HttpClient http = new();
     private static readonly ReadOnlyMemoryContent content = new("""[{"a":"f","c":1,"r":1}]"""u8.ToArray());
@@ -52,16 +52,22 @@ public static class MegaUtils
         CancellationToken cancellationToken = default)
     {
         using HttpResponseMessage resp = await http.PostAsync(
-            $"https://g.api.mega.co.nz/cs?id={DateTime.UtcNow.Ticks}&n={folderId}",
+            new UriBuilder()
+            {
+                Scheme = "https",
+                Host = "g.api.mega.co.nz",
+                Path = "cs",
+                Query = $"id={DateTime.UtcNow.Ticks}&n={folderId}"
+            }.Uri,
             content,
-            cancellationToken);
+            cancellationToken).C();
         using Aes aes = Aes.Create();
         aes.Key = Base64Url.DecodeFromChars(folderKey.Span);
         Dictionary<string, (string Name, string? Parent)> fileLinkList = [];
         List<(string Url, string Path)> result = [];
         await foreach (EntryList list in resp.Content.ReadFromJsonAsAsyncEnumerable(
             AppJsonSerializerContext.Default.EntryList,
-            cancellationToken))
+            cancellationToken).C())
         {
             foreach (EntryMetadata item in list.F)
             {
@@ -99,7 +105,7 @@ public static class MegaUtils
     {
         using Aes aes = Aes.Create();
         aes.SetKey(key);
-        // MEGA Cloud appears to be using an all-zero IV for AES-CBC.
+        // the IV is strange...
         ReadOnlySpan<byte> plaintext = aes.DecryptCbc(
             Base64Url.DecodeFromChars(cipertext),
             "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"u8,
@@ -122,16 +128,16 @@ public static class MegaUtils
         reference = (reference.Name, null);
         return reference.Name;
     }
-    public enum EntryType
+    internal enum EntryType
     {
         File,
         Folder
     }
-    public struct EntryName
+    internal struct EntryName
     {
         public string? N { get; set; }
     }
-    public struct EntryMetadata
+    internal struct EntryMetadata
     {
         public string? H { get; set; }
         public string? P { get; set; }
@@ -139,7 +145,7 @@ public static class MegaUtils
         public string? A { get; set; }
         public string? K { get; set; }
     }
-    public struct EntryList
+    internal struct EntryList
     {
         public ImmutableArray<EntryMetadata> F { get; set; }
     }

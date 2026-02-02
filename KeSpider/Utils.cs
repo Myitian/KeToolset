@@ -1,13 +1,21 @@
 using System.Collections.Frozen;
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using System.Text;
 
 namespace KeSpider;
 
-public static class Utils
+static class Utils
 {
     readonly static FrozenSet<char> InvalidFileNameChars = Path.GetInvalidFileNameChars().ToFrozenSet();
-
+    internal static ConfiguredTaskAwaitable C(this Task task)
+        => task.ConfigureAwait(false);
+    internal static ConfiguredTaskAwaitable<TResult> C<TResult>(this Task<TResult> task)
+        => task.ConfigureAwait(false);
+    internal static ConfiguredValueTaskAwaitable C(this ValueTask task)
+        => task.ConfigureAwait(false);
+    internal static ConfiguredValueTaskAwaitable<TResult> C<TResult>(this ValueTask<TResult> task)
+        => task.ConfigureAwait(false);
     public static void MakeLink(string fileName, string existingFileName)
     {
         if (!HardLink.Create(fileName, existingFileName))

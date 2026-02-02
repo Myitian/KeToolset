@@ -1,23 +1,34 @@
-using KeSpider.API;
+using KeCore;
+using KeCore.API;
 using KeSpider.OutlinkHandlers;
-using KeSpider.ZipEncodingDetector;
 using System.Diagnostics;
-using System.IO.Compression;
 using System.Net;
+using System.Reflection;
 using System.Runtime.InteropServices;
-using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
-using UtfUnknown;
+
+[assembly: DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
 
 namespace KeSpider;
 
-class Program
+static class Program
 {
-    readonly static HashSet<IOutlinkHandler> outlinkHandlers = [];
-    readonly static string proxy = "127.0.0.1:10809";
-    readonly static string aria2cFile = "aria2c";
-    readonly static string _7zFile = "7z";
+    static readonly HashSet<IOutlinkHandler> outlinkHandlers = [];
+    static readonly string proxy = "127.0.0.1:10809";
+    static readonly string aria2cFile = "aria2c";
+    static readonly string _7zFile = "7z";
+    internal static readonly Regex rXXX = Regexes.RegMultiPartNumberOnly();
+    internal static readonly Regex rPartXRar = Regexes.RegMultiPartRar();
+    internal static readonly Regex rRxx = Regexes.RegMultiPartRxx();
+    internal static readonly Regex rZxx = Regexes.RegMultiPartZxx();
+    internal static readonly EnumerationOptions simpleNonRecursiveEnumeration = new()
+    {
+        IgnoreInaccessible = true,
+        RecurseSubdirectories = false,
+        MatchCasing = MatchCasing.CaseInsensitive,
+        MatchType = MatchType.Simple,
+    };
 
     static Program()
     {
@@ -88,6 +99,7 @@ class Program
 
     public static string FixSpecialExt(string name)
     {
+        name = name.TrimEnd('.');
         if (!SpecialExtFix)
             return name;
         var lookup = SpecialExts.GetAlternateLookup<ReadOnlySpan<char>>();
@@ -96,7 +108,28 @@ class Program
             return name;
         return string.Concat(name.AsSpan(0, name.Length - ext.Length), newExt);
     }
-
+    public static int ProcessArchiveName(string fileName)
+    {
+        int extLen = 0;
+        ReadOnlySpan<char> ext = Path.GetExtension(fileName.AsSpan());
+        Span<char> extLC = stackalloc char[ext.Length];
+        ext.ToLowerInvariant(extLC);
+        if (extLC is ".zip" or ".rar" or ".7z" or ".gz" or ".tar")
+            return ext.Length;
+        Match m = rXXX.Match(fileName);
+        if (m.Success && int.TryParse(m.Groups["num"].ValueSpan, out _))
+            return m.Length;
+        m = rPartXRar.Match(fileName);
+        if (m.Success && int.TryParse(m.Groups["num"].ValueSpan, out _))
+            return m.Length;
+        m = rRxx.Match(fileName);
+        if (m.Success && int.TryParse(m.Groups["num"].ValueSpan, out _))
+            return m.Length;
+        m = rZxx.Match(fileName);
+        if (m.Success && int.TryParse(m.Groups["num"].ValueSpan, out _))
+            return m.Length;
+        return extLen;
+    }
     public static void Aria2cDownload(string folder, string name, string url, params IEnumerable<string> headers)
     {
         ProcessStartInfo aria2c = new(aria2cFile, [
@@ -104,7 +137,11 @@ class Program
             "--console-log-level=error",
             "--auto-file-renaming=false",
             "--summary-interval=0",
-            "--allow-overwrite=true","--check-certificate=false",
+            "--max-tries=50",
+            "--max-file-not-found=10",
+            "--lowest-speed-limit=128",
+            "--allow-overwrite=true",
+            "--check-certificate=false",
             ..headers.Select(it => $"--header={it}"),
             "-s", "16",
             "-x", "16",
@@ -114,7 +151,6 @@ class Program
             url]);
         Process.Start(aria2c)?.WaitForExit();
     }
-
     public static void SevenZipExtract(string folder, string path, string? password = null)
     {
         ProcessStartInfo _7z = new(_7zFile, [
@@ -124,50 +160,44 @@ class Program
             path]);
         Process.Start(_7z)?.WaitForExit();
     }
-
-    static readonly Regex rXXX = Regexes.RegMultiPartNumberOnly();
-    static readonly Regex rPartXRar = Regexes.RegMultiPartRar();
-    static readonly Regex rRxx = Regexes.RegMultiPartRxx();
-    static readonly Regex rZxx = Regexes.RegMultiPartZxx();
-
     public static Dictionary<string, string> SpecialExts = new()
     {
         { ".7", ".7z" },
         { ".zi", ".zip" }
     };
     public static bool SpecialExtFix { get; private set; } = true;
-
-    public static bool DL_Json { get; private set; } = true;
-    public static bool DL_File { get; private set; } = true;
-    public static bool DL_Content { get; private set; } = true;
-    public static bool DL_Outlink { get; private set; } = true;
-    public static bool DL_Picture { get; private set; } = true;
-    public static SaveMode SavemodeJson { get; private set; } = SaveMode.Replace;
-    public static SaveMode SavemodeFile { get; private set; } = SaveMode.Replace;
-    public static SaveMode SavemodeContent { get; private set; } = SaveMode.Replace;
-    public static SaveMode SavemodeOutlink { get; private set; } = SaveMode.Replace;
-    public static SaveMode SavemodePicture { get; private set; } = SaveMode.Replace;
+    public static bool DownloadJson { get; private set; } = true;
+    public static bool DownloadFile { get; private set; } = true;
+    public static bool DownloadContent { get; private set; } = true;
+    public static bool DownloadOutlink { get; private set; } = true;
+    public static bool DownloadPicture { get; private set; } = true;
+    public static SaveMode SaveModeJson { get; private set; } = SaveMode.Replace;
+    public static SaveMode SaveModeFile { get; private set; } = SaveMode.Replace;
+    public static SaveMode SaveModeContent { get; private set; } = SaveMode.Replace;
+    public static SaveMode SaveModeOutlink { get; private set; } = SaveMode.Replace;
+    public static SaveMode SaveModePicture { get; private set; } = SaveMode.Replace;
 
     static async Task Main()
     {
         Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
-        Console.InputEncoding = Encoding.UTF8;
-        Console.OutputEncoding = Encoding.UTF8;
+        Console.InputEncoding = Console.OutputEncoding = Encoding.UTF8;
         using SocketsHttpHandler handler = new()
         {
             AutomaticDecompression = DecompressionMethods.All,
             AllowAutoRedirect = true,
             UseProxy = true
         };
-        HttpClient client = new(handler);
-        client.DefaultRequestHeaders.Accept.Add(new("text/css"));
-        Console.WriteLine("Use aria2c: " + aria2cFile);
-        Console.WriteLine("Use 7z: " + _7zFile);
-        Console.WriteLine("Use proxy: " + proxy);
+        using HttpClient client = new(handler);
+        client.DefaultRequestHeaders.Accept.Add(new("text/css")); // the website's strange firewall rule for API requests
+        AssemblyName assembly = Assembly.GetExecutingAssembly().GetName();
+        Console.WriteLine($"{assembly.Name} v{assembly.Version}");
+        Console.WriteLine($"Use aria2c: {aria2cFile}");
+        Console.WriteLine($"Use 7z: {_7zFile}");
+        Console.WriteLine($"Use proxy: {proxy}");
 
         Console.WriteLine("Mode [0:All/1:Selected]?:");
         bool all = Console.ReadLine()?.Trim() != "1";
-        HashSet<PostInfo> posts = all ? await LoadAllPosts(client) : LoadSelectedPosts();
+        HashSet<PostInfo> posts = all ? await LoadAllPosts(client).C() : LoadSelectedPosts();
         Console.WriteLine();
         Console.WriteLine("------");
         Console.WriteLine("Enter Settings:");
@@ -180,16 +210,16 @@ class Program
         Console.WriteLine("Current Settings:");
 
         Console.WriteLine("OverridingEncoding: " + (encoding?.EncodingName ?? "null"));
-        Console.WriteLine("dl_json: " + DL_Json);
-        Console.WriteLine("dl_file: " + DL_File);
-        Console.WriteLine("dl_content: " + DL_Content);
-        Console.WriteLine("dl_outlink: " + DL_Outlink);
-        Console.WriteLine("dl_picture: " + DL_Picture);
-        Console.WriteLine("savemode_json: " + SavemodeJson);
-        Console.WriteLine("savemode_file: " + SavemodeFile);
-        Console.WriteLine("savemode_content: " + SavemodeContent);
-        Console.WriteLine("savemode_outlink: " + SavemodeOutlink);
-        Console.WriteLine("savemode_picture: " + SavemodePicture);
+        Console.WriteLine("dl_json: " + DownloadJson);
+        Console.WriteLine("dl_file: " + DownloadFile);
+        Console.WriteLine("dl_content: " + DownloadContent);
+        Console.WriteLine("dl_outlink: " + DownloadOutlink);
+        Console.WriteLine("dl_picture: " + DownloadPicture);
+        Console.WriteLine("savemode_json: " + SaveModeJson);
+        Console.WriteLine("savemode_file: " + SaveModeFile);
+        Console.WriteLine("savemode_content: " + SaveModeContent);
+        Console.WriteLine("savemode_outlink: " + SaveModeOutlink);
+        Console.WriteLine("savemode_picture: " + SaveModePicture);
 
         Console.WriteLine();
         Console.WriteLine("------");
@@ -204,8 +234,8 @@ class Program
         Directory.CreateDirectory(destination);
 
         int i = 0;
-        foreach ((string id, string user, string service, string domain) in posts)
-            i = await ProcessPost(client, posts, encoding, destination, dlCache, i, id, user, service, domain);
+        foreach (PostInfo post in posts)
+            i = await ProcessPost(client, posts, encoding, destination, dlCache, i, post).C();
 
         Console.WriteLine();
         Console.WriteLine();
@@ -285,37 +315,26 @@ class Program
         Console.WriteLine("Enter Name Filter (Regex):");
         string? userRegexStr = Console.ReadLine();
         Regex? userRegex = string.IsNullOrEmpty(userRegexStr) ? null : new(userRegexStr);
-        int offeet = 0;
-        List<PostsResult>? postsAPIResult;
-        do
+        return await KeCoreUtils.LoadAllPosts(client, domain, service, user, Predicate).C();
+
+        bool Predicate(PostsResult post)
         {
-            postsAPIResult = await PostsResult.Request(client, domain, service, user, offeet);
-            offeet += 50;
-            if (postsAPIResult?.Count is null or <= 0)
-                break;
-            foreach (PostsResult post in postsAPIResult)
+            if (long.TryParse(post.ID, out long postID))
             {
-                if (long.TryParse(post.ID, out long postID))
-                {
-                    if (minID.HasValue && postID < minID)
-                        continue;
-                    if (maxID.HasValue && postID > maxID)
-                        continue;
-                }
-                else
-                {
-                    if (!string.IsNullOrEmpty(minIDStr) && post.ID.CompareTo(minIDStr) < 0)
-                        continue;
-                    if (!string.IsNullOrEmpty(maxIDStr) && post.ID.CompareTo(maxIDStr) > 0)
-                        continue;
-                }
-                if (!(userRegex?.IsMatch(post.Title) ?? true))
-                    continue;
-                posts.Add(new(post, domain));
+                if (minID.HasValue && postID < minID)
+                    return false;
+                if (maxID.HasValue && postID > maxID)
+                    return false;
             }
+            else
+            {
+                if (!string.IsNullOrEmpty(minIDStr) && post.ID.CompareTo(minIDStr) < 0)
+                    return false;
+                if (!string.IsNullOrEmpty(maxIDStr) && post.ID.CompareTo(maxIDStr) > 0)
+                    return false;
+            }
+            return userRegex?.IsMatch(post.Title) ?? true;
         }
-        while (postsAPIResult?.Count >= 50);
-        return posts;
     }
 
     private static async Task<int> ProcessPost(
@@ -325,77 +344,51 @@ class Program
         string destination,
         Dictionary<Array256bit, string> dlCache,
         int i,
-        string id,
-        string user,
-        string service,
-        string domain)
+        PostInfo post)
     {
-        dlCache.Clear();
         try
         {
             Console.WriteLine($"  * {i * 100.0 / posts.Count,5:f2}% - {++i} of {posts.Count}");
-            (byte[] json, PostRoot? post) = await PostRoot.Request(client, domain, service, user, id);
-            if (post is null)
+            (byte[] json, PostRoot? postRoot) = await PostRoot.Request(client, post.Domain, post.Service, post.User, post.ID).C();
+            if (postRoot is null)
             {
-                Console.WriteLine($"Failed to get post https://{domain}/api/v1/{service}/user/{user}/post/{post}");
+                Console.WriteLine($"Failed to get post https://{post.Domain}/api/v1/{post.Service}/user/{post.User}/post/{postRoot}");
                 goto END;
             }
-            ReadOnlySpan<char> rawName = Utils.XTrim(post.Post.Title);
+            ReadOnlySpan<char> rawName = Utils.XTrim(postRoot.Post.Title);
             string pagename = Utils.ReplaceInvalidFileNameChars(rawName);
-            DateTime datetime = Utils.NormalizeTime(post.Post.Published).ToLocalTime();
-            DateTime datetimeEdited = Utils.NormalizeTime(post.Post.Edited ?? post.Post.Published).ToLocalTime();
-            string pagenameWithID = $"{id}_{pagename}";
+            DateTime datetime = Utils.NormalizeTime(postRoot.Post.Published).ToLocalTime();
+            DateTime datetimeEdited = Utils.NormalizeTime(postRoot.Post.Edited ?? postRoot.Post.Published).ToLocalTime();
+            string pagenameWithID = $"{post.ID}_{pagename}";
             string pageFolderPath = Path.Combine(destination, pagenameWithID);
 
-            if (Directory.EnumerateDirectories(destination, $"{id}_*").FirstOrDefault() is string s
+            if (Directory.EnumerateDirectories(destination, $"{post.ID}_*").FirstOrDefault() is string s
                 && Path.GetFileName(s) != pagenameWithID)
             {
                 Console.WriteLine($"  !! Renaming old directory: {s}");
                 Console.WriteLine($"  !! To: {pageFolderPath}");
                 Directory.Move(s, pageFolderPath);
             }
-            Console.WriteLine($"  >> {id} {rawName}");
+            Console.WriteLine($"  >> {post.ID} {rawName}");
             DirectoryInfo dir = Directory.CreateDirectory(pageFolderPath);
-            pageFolderPath = dir.FullName;
-
-            if (DL_Json)
-            {
-                Console.WriteLine("    @J - Save JSON");
-                Utils.SaveFile(json, "post.json", pageFolderPath, datetime, datetimeEdited, SavemodeJson);
-            }
-            if (DL_File)
-            {
-                await DownloadFile(client, encoding, dlCache, domain, post, datetime, datetimeEdited, pageFolderPath);
-            }
+            PostContext context = new(client, encoding, dlCache, postRoot, datetime, datetimeEdited, pageFolderPath);
 
             string? content = null;
-            if (DL_Content || DL_Outlink)
-                content = post.Post.Content;
+            if (DownloadContent || DownloadOutlink)
+                content = postRoot.Post.Content;
 
-            if (DL_Content && content != null)
-            {
-                Console.WriteLine("    @C - Save Content");
+            if (DownloadJson)
+                context.DownloadJson(json);
+            if (DownloadContent && content != null)
+                context.DownloadContent(content);
+            if (DownloadOutlink && content != null)
+                await context.DownloadOutlink(outlinkHandlers, content).C();
+            if (DownloadPicture)
+                context.DownloadPicture();
+            if (DownloadFile)
+                await context.DownloadFile(post.Domain).C();
 
-                string path = Path.Combine(pageFolderPath, "content.html");
-                if (SavemodeContent == SaveMode.Skip && File.Exists(path))
-                {
-                    Console.WriteLine("    @C - Skipped");
-                    Utils.SetTime(path, datetime, datetimeEdited);
-                }
-                else
-                    Utils.SaveFile(content, "content.html", pageFolderPath, datetime, datetimeEdited, SavemodeContent);
-            }
-
-            if (DL_Outlink && content != null)
-            {
-                await DownloadOutlink(client, dlCache, post, datetime, datetimeEdited, pageFolderPath, content);
-            }
-
-            if (DL_Picture)
-            {
-                DownloadPicture(dlCache, post, datetime, datetimeEdited, pageFolderPath);
-            }
-
+            context.ProcessArchives();
             Utils.SetTime(pageFolderPath, datetime, datetimeEdited);
         }
         catch (Exception ex)
@@ -405,309 +398,5 @@ class Program
         }
     END:
         return i;
-    }
-
-
-    private static async Task DownloadFile(
-        HttpClient client,
-        Encoding? encoding,
-        Dictionary<Array256bit, string> dlCache,
-        string domain,
-        PostRoot post,
-        DateTime datetime,
-        DateTime datetimeEdited,
-        string pageFolderPath)
-    {
-        if (post?.Attachments?.Count is null or 0)
-            return;
-        int j = 0, fid = 0;
-        Dictionary<string, (string Path, string? Password)> part1s = [];
-        foreach (Attachment file in post.Attachments)
-        {
-            try
-            {
-                string fileUrl = $"{file.Server}/data{file.Path}";
-                Console.WriteLine($"    @F - {++j} of {post.Attachments.Count} - Download File {fileUrl}");
-                ReadOnlySpan<char> name = string.IsNullOrEmpty(file.Name) || file.Name.StartsWith("https://www.patreon.com/media-u/", StringComparison.Ordinal)
-                    ? Path.GetFileName((ReadOnlySpan<char>)file.Path) : file.Name;
-                string fileNameMain = Utils.ReplaceInvalidFileNameChars(name);
-                string fileName = FixSpecialExt(fileNameMain);
-                string oldName = $"{fid}_{fileName}";
-                string newName = $"{fid++.ToString().PadLeft(3, '0')}_{fileName}";
-                int mLen = 0, num = 0;
-                do
-                {
-                    if (Path.GetExtension(fileName) is ".zip" or ".rar" or ".7z" or ".gz" or ".tar")
-                    {
-                        mLen = -1;
-                        break;
-                    }
-                    Match m = rXXX.Match(fileName);
-                    if (m.Success && int.TryParse(m.Groups["num"].Value, out num))
-                    {
-                        mLen = m.Length;
-                        break;
-                    }
-                    m = rPartXRar.Match(fileName);
-                    if (m.Success && int.TryParse(m.Groups["num"].Value, out num))
-                    {
-                        mLen = m.Length;
-                        break;
-                    }
-                    m = rRxx.Match(fileName);
-                    if (m.Success && int.TryParse(m.Groups["num"].Value, out num))
-                    {
-                        mLen = m.Length;
-                        break;
-                    }
-                    m = rZxx.Match(fileName);
-                    if (m.Success && int.TryParse(m.Groups["num"].Value, out num))
-                    {
-                        mLen = m.Length;
-                        break;
-                    }
-                    fileName = newName;
-                } while (false);
-                string path = Path.Combine(pageFolderPath, fileName);
-                if (fileName != oldName)
-                {
-                    string oldPath = Path.Combine(pageFolderPath, oldName);
-                    if (File.Exists(oldPath))
-                    {
-                        File.Move(oldPath, path);
-                        Console.WriteLine("fix old name!");
-                    }
-                }
-                if (fileName != newName)
-                {
-                    string newPath = Path.Combine(pageFolderPath, newName);
-                    if (File.Exists(newPath))
-                    {
-                        File.Move(newPath, path);
-                        Console.WriteLine("fix old name!");
-                    }
-                }
-                string namePart = mLen > 0 ? fileName[..^mLen] : Path.GetFileNameWithoutExtension(fileName);
-                string d = Path.Combine(pageFolderPath, namePart);
-                if (mLen != 0 && Directory.Exists(d))
-                {
-                    Console.WriteLine("    @F - Pass Extracted Archive File!");
-                    continue;
-                }
-                Array256bit sha256url = new();
-                Convert.FromHexString(file.Path.AsSpan(7, 64), sha256url, out _, out _);
-                if (dlCache.TryGetValue(sha256url, out string? duplicated))
-                {
-                    if (File.Exists(path))
-                        File.Delete(path);
-                    Console.WriteLine("    @F - Link");
-                    Utils.MakeLink(path, duplicated);
-                    goto E;
-                }
-                else if (File.Exists(path))
-                {
-                    switch (SavemodeFile)
-                    {
-                        case SaveMode.Skip:
-                            Console.WriteLine($"    @F - Skipped");
-                            goto E;
-                        case SaveMode.Replace:
-                            using (FileStream fs = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.Read))
-                            {
-                                Array256bit sha256local = new();
-                                SHA256.HashData(fs, sha256local);
-                                if (sha256local == sha256url)
-                                {
-                                    Console.WriteLine($"    @F - Skipped (SHA256)");
-                                    goto E;
-                                }
-                            }
-                            break;
-                    }
-                }
-                Console.WriteLine($"    @F - aria2c!");
-                Aria2cDownload(pageFolderPath, fileName, fileUrl);
-            E:
-                dlCache[sha256url] = fileName;
-                Utils.SetTime(path, datetime, datetimeEdited);
-                FileInfo fi = new(path);
-                string oldA = Path.Combine(pageFolderPath, namePart);
-                string oldB = Path.Combine(pageFolderPath, namePart);
-                bool dNEx = !Directory.Exists(d) && !File.Exists(d);
-                if (dNEx)
-                {
-                    if (Directory.Exists(oldA))
-                        Directory.Move(oldA, d);
-                    else if (Directory.Exists(oldB))
-                        Directory.Move(oldB, d);
-                    else if (fi.Extension is ".zip" or ".rar" or ".7z" or ".gz" or ".tar" or ".r00" or ".001")
-                    {
-                        Archive archive = await Archive.Request(client, domain, file.Stem);
-                        string? password = archive.Password;
-                        part1s.Add(d, (path, password));
-                    }
-                }
-            }
-            catch { }
-        }
-        foreach ((string p1, (string path, string? password)) in part1s)
-        {
-            if (!Directory.Exists(p1) && !File.Exists(p1))
-            {
-                string? pwd = password;
-                switch (pwd)
-                {
-                    case null when path.EndsWith(".zip"):
-                        try
-                        {
-                            Console.WriteLine("    @F - zip! Trying to use .NET built-in API...");
-                            using ZipArchive zip0 = ZipFile.OpenRead(path);
-                            Console.WriteLine("    @F - zip! Detecting encoding...");
-                            DetectionResult result = zip0.DetectEncoding();
-                            DetectionDetail? detected = result.Detected;
-                            foreach (DetectionDetail detail in result.Details)
-                                Console.WriteLine($"    @F - zip! CONF:{detail.Confidence} E:{detail.EncodingName}");
-                            Encoding u;
-                            switch (detected?.EncodingName)
-                            {
-                                case "utf-8":
-                                case "ascii":
-                                case "gb18030" when detected.Confidence > 0.7f:
-                                case "big5" when detected.Confidence > 0.7f:
-                                case "shift_jis" when detected.Confidence > 0.7f:
-                                    Console.WriteLine($"    @F - zip! Result: {(u = detected.Encoding).EncodingName}");
-                                    break;
-                                default:
-                                    if (encoding is null)
-                                        throw new NotSupportedException();
-                                    Console.WriteLine($"    @F - zip! OverridenBy: {(u = encoding).EncodingName}");
-                                    break;
-                            }
-                            ZipFile.ExtractToDirectory(path, p1, u, true);
-                            continue;
-                        }
-                        catch (Exception ex)
-                        {
-                            Console.WriteLine($"    @F - zip! Exception: {ex.Message}");
-                            goto default;
-                        }
-                    case "":
-                        Console.WriteLine("Need password!");
-                        pwd = Console.ReadLine();
-                        goto default;
-                    default:
-                        if (pwd is null)
-                            Console.WriteLine($"    @F - 7z! \"{p1}\" \"{path}\"");
-                        else
-                            Console.WriteLine($"    @F - 7z! \"{p1}\" \"{path}\" pwd\"{pwd}\"");
-                        SevenZipExtract(p1, path, pwd);
-                        break;
-                }
-            }
-        }
-    }
-
-    private static async Task DownloadOutlink(
-        HttpClient client,
-        Dictionary<Array256bit, string> dlCache,
-        PostRoot post,
-        DateTime datetime,
-        DateTime datetimeEdited,
-        string pageFolderPath,
-        string content)
-    {
-        HashSet<string> usedLinks = [];
-        foreach (IOutlinkHandler handler in outlinkHandlers)
-        {
-            try
-            {
-                Regex pattern = handler.Pattern;
-                await handler.ProcessMatches(client, dlCache, post, datetime, datetimeEdited, pageFolderPath, content, usedLinks,
-                    pattern.Matches(content).Append(pattern.Match(post.Post.Embed.URL ?? "")));
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine(ex);
-            }
-        }
-    }
-
-    private static void DownloadPicture(
-        in Dictionary<Array256bit, string> dlCache,
-        in PostRoot post,
-        in DateTime datetime,
-        in DateTime datetimeEdited,
-        in string pageFolderPath)
-    {
-        if (post?.Previews?.Count is null or 0)
-            return;
-        int j = 0;
-        foreach (Attachment picture in post.Previews)
-        {
-            if (string.IsNullOrEmpty(picture.Path) || string.IsNullOrEmpty(picture.Server))
-                continue;
-            try
-            {
-                string fileUrl = $"{picture.Server}/data{picture.Path}";
-                Console.WriteLine($"    @P - {j + 1} of {post.Previews.Count} - Download Picture {fileUrl}");
-                ReadOnlySpan<char> name = string.IsNullOrEmpty(picture.Name) || picture.Name.StartsWith("https://www.patreon.com/media-u/", StringComparison.Ordinal)
-                    ? Path.GetFileName(picture.Path.AsSpan()) : picture.Name;
-                string validName = Utils.ReplaceInvalidFileNameChars(name);
-                string ext = Path.GetExtension(validName);
-                string prefix = j++.ToString().PadLeft(3, '0');
-                string fileName = $"{prefix}_{validName}";
-                string path = Path.Combine(pageFolderPath, fileName);
-                string[] oldNames = [
-                    .. Directory.EnumerateFiles(pageFolderPath, $"{j}_*{ext}"),
-                    .. Directory.EnumerateFiles(pageFolderPath, $"{prefix}_*{ext}").Where(it => it != path)
-                ];
-                if (oldNames.Length > 0)
-                {
-                    File.Move(oldNames[0], path);
-                    Console.WriteLine("fix old name!");
-                    for (int ii = 1; ii < oldNames.Length; ii++)
-                    {
-                        Console.WriteLine("Delete extra old name!");
-                        File.Delete(oldNames[ii]);
-                    }
-                }
-                Array256bit sha256url = new();
-                Convert.FromHexString(picture.Path.AsSpan(7, 64), sha256url, out _, out _);
-                if (dlCache.TryGetValue(sha256url, out string? duplicated))
-                {
-                    if (File.Exists(path))
-                        File.Delete(path);
-                    Console.WriteLine("    @P - Link");
-                    Utils.MakeLink(path, duplicated);
-                    goto E;
-                }
-                else if (File.Exists(path))
-                {
-                    switch (SavemodePicture)
-                    {
-                        case SaveMode.Skip:
-                            Console.WriteLine("    @P - Skipped");
-                            goto E;
-                        case SaveMode.Replace:
-                            using (FileStream fs = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.Read))
-                            {
-                                Array256bit sha256local = new();
-                                SHA256.HashData(fs, sha256local);
-                                if (sha256local == sha256url)
-                                {
-                                    Console.WriteLine("    @P - Skipped (SHA256)");
-                                    goto E;
-                                }
-                            }
-                            break;
-                    }
-                }
-                Aria2cDownload(pageFolderPath, fileName, fileUrl);
-            E:
-                dlCache[sha256url] = fileName;
-                Utils.SetTime(path, datetime, datetimeEdited);
-            }
-            catch { }
-        }
     }
 }

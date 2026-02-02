@@ -4,7 +4,7 @@ using UtfUnknown;
 
 namespace KeSpider.ZipEncodingDetector;
 
-public static class ZipArchiveExtension
+static class ZipArchiveExtension
 {
     [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_storedEntryNameBytes")]
     private static extern ref byte[] GetStoredEntryNameBytes(this ZipArchiveEntry zipArchiveEntry);

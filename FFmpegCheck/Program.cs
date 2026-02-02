@@ -4,9 +4,11 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
 
+[assembly: DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
+
 namespace FFmpegCheck;
 
-class Program
+static class Program
 {
     static readonly string NullDevice = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "NUL" : "/dev/null";
     static readonly string[] BasicArgs = [
@@ -28,8 +30,7 @@ class Program
     {
         try
         {
-            Console.InputEncoding = Encoding.UTF8;
-            Console.OutputEncoding = Encoding.UTF8;
+            Console.InputEncoding = Console.OutputEncoding = Encoding.UTF8;
             ArgParser argx = new(args, true,
                 new("--help", 0, "-h")
                 {

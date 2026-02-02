@@ -5,4 +5,4 @@ namespace MegaDownloaderXmlGenerator;
 [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
 [JsonSerializable(typeof(MegaUtils.EntryList))]
 [JsonSerializable(typeof(MegaUtils.EntryName))]
-internal partial class AppJsonSerializerContext : JsonSerializerContext;
+sealed partial class AppJsonSerializerContext : JsonSerializerContext;

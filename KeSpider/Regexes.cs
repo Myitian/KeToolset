@@ -2,7 +2,7 @@ using System.Text.RegularExpressions;
 
 namespace KeSpider;
 
-partial class Regexes
+static partial class Regexes
 {
     [GeneratedRegex(@"https://(?<domain>[^/]+)/(?:api/v\d/)?(?<service>[^/]+)/user/(?<user>[^/\?#]+)")]
     internal static partial Regex RegMainPage();

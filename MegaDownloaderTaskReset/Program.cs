@@ -1,11 +1,14 @@
 ﻿using Microsoft.VisualBasic.FileIO;
 using System.Buffers;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Xml;
 using static MegaDownloaderTaskReset.ConColor;
+
+[assembly: DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
 
 namespace MegaDownloaderTaskReset;
 
@@ -262,9 +265,9 @@ static class Program
                                     int errno = Marshal.GetLastPInvokeError();
                                     Write(Console.Out,
                                         $"""
-                                    {RedFG}创建硬链接失败{DarkRedFG}：{RedFG}{errno} {Marshal.GetPInvokeErrorMessage(errno)}{Reset}
-                                    是否继续？
-                                    """);
+                                        {RedFG}创建硬链接失败{DarkRedFG}：{RedFG}{errno} {Marshal.GetPInvokeErrorMessage(errno)}{Reset}
+                                        是否继续？
+                                        """);
                                     if (!ReadBoolean())
                                         return false;
                                 }
@@ -412,24 +415,24 @@ static class Program
         {
             Console.WriteLine("基本信息：");
             WriteLine(Console.Out,
-                $"{CyanFG}{xml.ChildNodes.Count}{Reset}个包");
+                $"{CyanFG}{xml.ChildCount}{Reset}个包");
             foreach (XmlNode package in xml.ChildNodes)
                 if (package["ListaFicheros"] is XmlNode files && package["Nombre"] is XmlNode packageName)
                     WriteLine(Console.Out,
-                        $"+ {WhiteFG}包 {DarkYellowFG}\"{YellowFG}{packageName.Value}{DarkYellowFG}\"{DarkGrayFG}：{CyanFG}{files.ChildNodes.Count}{Reset}个文件");
+                        $"+ {WhiteFG}包 {DarkYellowFG}\"{YellowFG}{packageName.Value}{DarkYellowFG}\"{DarkGrayFG}：{CyanFG}{files.ChildCount}{Reset}个文件");
             return false;
         }, "info", "i", "information");
         RegisterCommand(static (ref updateNotSave, ref xml, args) =>
         {
             Console.WriteLine("文件列表：");
             WriteLine(Console.Out,
-                $"{CyanFG}{xml.ChildNodes.Count}{Reset}个包");
+                $"{CyanFG}{xml.ChildCount}{Reset}个包");
             foreach (XmlNode package in xml.ChildNodes)
             {
                 if (package["ListaFicheros"] is not XmlNode files || package["Nombre"] is not XmlNode packageName)
                     continue;
                 WriteLine(Console.Out,
-                    $"- {WhiteFG}包 {DarkYellowFG}\"{YellowFG}{packageName.Value}{DarkYellowFG}\"{DarkGrayFG}：{CyanFG}{files.ChildNodes.Count}{Reset}个文件");
+                    $"- {WhiteFG}包 {DarkYellowFG}\"{YellowFG}{packageName.Value}{DarkYellowFG}\"{DarkGrayFG}：{CyanFG}{files.ChildCount}{Reset}个文件");
                 foreach (XmlNode file in files.ChildNodes)
                 {
                     if (file["URL"] is not XmlNode urlNode
@@ -698,7 +701,7 @@ static class Program
                     continue;
                 foreach (XmlNode file in files.ChildNodes)
                 {
-                    if (!file.Attributes.Contains(v2))
+                    if (!file.HasAttribute(v2))
                     {
                         Console.WriteLine("仅支持v2文件信息");
                         continue;
@@ -760,7 +763,7 @@ static class Program
                                             chunk["Available"]?.SetValue("True");
                                         }
                                         WriteLine(Console.Out,
-                                            $"  * 重置{CyanFG}{chunkList.ChildNodes.Count}{Reset}个区块");
+                                            $"  * 重置{CyanFG}{chunkList.ChildCount}{Reset}个区块");
                                     }
                                 }
                                 goto case 0;
@@ -788,12 +791,11 @@ static class Program
     {
         foreach (string name in names)
             if (!commandRegistry.TryAdd(name, command))
-                throw new Exception($"name \"{name}\" already used!");
+                throw new ArgumentException($"name \"{name}\" already used!");
     }
     static void Main()
     {
-        Console.InputEncoding = Encoding.UTF8;
-        Console.OutputEncoding = Encoding.UTF8;
+        Console.InputEncoding = Console.OutputEncoding = Encoding.UTF8;
         XmlNode xml = ReadXML(xmlPath);
         bool updateNotSave = false;
         while (true)
@@ -919,7 +921,6 @@ static class Program
                 tmp[k++] = arr[i++];
             else
                 tmp[k++] = arr[j++];
-        // Although it looks strange, the merge sort implementation is correct.
         if (i < mid)
             arr[i..mid].CopyTo(arr[k..]);
         tmp[..k].CopyTo(arr);
@@ -964,7 +965,7 @@ static class Program
 //      #         $         x         E         K         ;         9         q
         0x23,0x00,0x24,0x00,0x78,0x00,0x45,0x00,0x4B,0x00,0x3B,0x00,0x39,0x00,0x71,0x00];
 
-    public sealed class DeDupComparer : IComparer<(XmlNode, XmlNode)>
+    sealed class DeDupComparer : IComparer<(XmlNode, XmlNode)>
     {
         public static readonly DeDupComparer Instance = new();
         public int Compare((XmlNode, XmlNode) x, (XmlNode, XmlNode) y)

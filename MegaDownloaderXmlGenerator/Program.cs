@@ -1,25 +1,29 @@
 ﻿using System.Buffers.Binary;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Xml;
 
+#pragma warning disable CA1031,CA1849
+
 namespace MegaDownloaderXmlGenerator;
 
-partial class Program
+static partial class Program
 {
     static readonly KeyValuePair<string, string> v2 = new("v", "2");
 
     [GeneratedRegex(@"https?://mega(?:\.co)?\.nz/[^#]+#[a-zA-Z0-9\-_]+")]
     private static partial Regex RegMega();
+    internal static ConfiguredTaskAwaitable<TResult> C<TResult>(this Task<TResult> task)
+        => task.ConfigureAwait(false);
+    internal static ConfiguredCancelableAsyncEnumerable<TResult> C<TResult>(this IAsyncEnumerable<TResult> results)
+        => results.ConfigureAwait(false);
     private static async Task<int> Main(string[] args)
     {
-        Console.InputEncoding = Encoding.UTF8;
-        Console.OutputEncoding = Encoding.UTF8;
-#pragma warning disable CA1859 // it can be an array or a list, but roslyn bugged here.
+        Console.InputEncoding = Console.OutputEncoding = Encoding.UTF8;
         IList<string> directories;
-#pragma warning restore CA1859
         if (args.Length > 0)
             directories = args;
         else
@@ -33,7 +37,7 @@ partial class Program
                 
                 Interactive input:
                 """);
-            directories = [];
+            directories = new List<string>(4);
             while (Console.In.ReadLine() is string line and not "")
                 directories.Add(line.AsSpan().Trim().Trim('"').ToString());
         }
@@ -49,7 +53,7 @@ partial class Program
                     Console.Error.WriteLine(key.Span);
                     if (line.Contains("/folder/"))
                     {
-                        foreach ((string fileUrl, string filePath) in await MegaUtils.ResolveFolderAsync(id, key))
+                        foreach ((string fileUrl, string filePath) in await MegaUtils.ResolveFolderAsync(id, key).C())
                         {
                             Console.Error.WriteLine(fileUrl);
                             Console.Error.WriteLine(filePath);
@@ -89,7 +93,7 @@ partial class Program
                 {
                     try
                     {
-                        foreach ((string fileUrl, string filePath) in await MegaUtils.ResolveFolderAsync(id, key))
+                        foreach ((string fileUrl, string filePath) in await MegaUtils.ResolveFolderAsync(id, key).C())
                         {
                             Console.Error.WriteLine($"Loading {fileUrl}...");
                             if (!MegaUtils.ExtractIdKey(fileUrl.AsMemory(), out id, out key))

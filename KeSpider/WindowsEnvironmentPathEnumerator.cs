@@ -6,7 +6,7 @@ namespace KeSpider;
 /// <summary>
 /// Parsing of the Path environment variable.<br/>The parsing results are basically the same as those implemented by Windows itself.
 /// </summary>
-public ref struct WindowsEnvironmentPathEnumerator(ReadOnlySpan<char> chars) : IEnumerator<ReadOnlySpan<char>>
+ref struct WindowsEnvironmentPathEnumerator(ReadOnlySpan<char> chars) : IEnumerator<ReadOnlySpan<char>>
 {
     private readonly static SearchValues<char> specialChars = SearchValues.Create(";\"");
     private readonly ReadOnlySpan<char> span = chars;

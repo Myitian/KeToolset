@@ -1,4 +1,3 @@
-using KeSpider.API;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -10,7 +9,7 @@ using System.Text.RegularExpressions;
 
 namespace KeSpider.OutlinkHandlers;
 
-public partial class OneDriveOutlinkHandler : IOutlinkHandler, IDisposable
+sealed partial class OneDriveOutlinkHandler : IOutlinkHandler, IDisposable
 {
     private static readonly MediaTypeWithQualityHeaderValue Any = new("*/*");
     private static readonly MediaTypeWithQualityHeaderValue ApplicationJson = new(MediaTypeNames.Application.Json);
@@ -18,14 +17,22 @@ public partial class OneDriveOutlinkHandler : IOutlinkHandler, IDisposable
     internal static partial Regex RegOneDrive();
     public static OneDriveOutlinkHandler Instance { get; } = new();
 
-    private SocketsHttpHandler? handler = null;
-    private HttpClient? client = null;
-    private HttpClient Client
+    private bool canceled;
+    private SocketsHttpHandler? handler;
+    private HttpClient? client;
+    private HttpClient? Client
     {
         get
         {
-            if (client is not null)
+            if (canceled || client is not null)
                 return client;
+            Console.WriteLine("AuthenticationHeader:");
+            ReadOnlySpan<char> span = Console.ReadLine().AsSpan().Trim();
+            if (span.IsEmpty)
+            {
+                canceled = true;
+                return null;
+            }
             handler = new()
             {
                 AutomaticDecompression = DecompressionMethods.All,
@@ -33,8 +40,6 @@ public partial class OneDriveOutlinkHandler : IOutlinkHandler, IDisposable
                 UseProxy = true
             };
             client = new(handler);
-            Console.WriteLine("AuthenticationHeader:");
-            ReadOnlySpan<char> span = Console.ReadLine().AsSpan().Trim();
             int space = span.IndexOf(' ');
             client.DefaultRequestHeaders.Authorization = space < 0 ?
                 new(new(span)) :
@@ -44,12 +49,7 @@ public partial class OneDriveOutlinkHandler : IOutlinkHandler, IDisposable
     }
     public Regex Pattern => RegOneDrive();
     public async ValueTask ProcessMatches(
-        HttpClient client,
-        Dictionary<Array256bit, string> dlCache,
-        PostRoot post,
-        DateTime datetime,
-        DateTime datetimeEdited,
-        string pageFolderPath,
+        PostContext context,
         string content,
         HashSet<string> usedLinks,
         params IEnumerable<Match> matches)
@@ -62,98 +62,89 @@ public partial class OneDriveOutlinkHandler : IOutlinkHandler, IDisposable
             if (!usedLinks.Add(text))
                 continue;
             string fileName = Utils.ReplaceInvalidFileNameChars(text) + ".placeholder.txt";
-            string path = Path.Combine(pageFolderPath, fileName);
+            string path = Path.Combine(context.PageFolderPath, fileName);
+            PostContext.Log(IOutlinkHandler.MODE, $"Find Outlink of OneDrive: {text}");
+            int index = context.OutlinkCounter++;
 
-            Console.WriteLine($"    @O - Find Outlink of OneDrive: {text}");
-
-            if (Program.SavemodeContent == SaveMode.Skip && File.Exists(path))
+            if (Program.SaveModeOutlink == SaveMode.Skip && File.Exists(path))
             {
-                Console.WriteLine("    @O - Skipped");
-                Utils.SetTime(path, datetime, datetimeEdited);
+                PostContext.Log(IOutlinkHandler.MODE, "Skipped");
+                Utils.SetTime(path, context.Datetime, context.DatetimeEdited);
+                continue;
             }
-            else
+            Utils.SaveFile(text, fileName, context.PageFolderPath, context.Datetime, context.DatetimeEdited, Program.SaveModeOutlink);
+            HttpClient? odClient = Client;
+            if (odClient is null)
             {
-                Utils.SaveFile(text, fileName, pageFolderPath, datetime, datetimeEdited, Program.SavemodeOutlink);
-                string sharingToken = EncodeSharingUrl(text);
-                string endpoint = $"https://graph.microsoft.com/v1.0/shares/u!{sharingToken}/driveItem";
-                Console.WriteLine($"    @O - Metadata {endpoint}");
-                DriveItem? driveItem;
-                string? raw = null;
-                using (HttpRequestMessage reqMetadata = new(HttpMethod.Get, endpoint))
-                {
-                    reqMetadata.Headers.Accept.Clear();
-                    reqMetadata.Headers.Accept.Add(ApplicationJson);
-                    using HttpResponseMessage respMetadata = await Client.SendAsync(reqMetadata, HttpCompletionOption.ResponseContentRead);
-                    raw = await respMetadata.Content.ReadAsStringAsync();
-                    driveItem = await respMetadata.Content.ReadFromJsonAsync(AppJsonSerializerContext.Default.DriveItem);
-                }
-                if (driveItem is not { Name: not null, File: not null })
-                {
-                    Console.WriteLine(raw);
-                    return;
-                }
-                fileName = Program.FixSpecialExt(driveItem.Name);
-                path = Path.Combine(pageFolderPath, fileName);
-                Array256bit sha256url = new();
-                if (driveItem.File.Hashes.SHA256Hash?.Length is SHA256.HashSizeInBits / 4)
-                {
-                    Convert.FromHexString(driveItem.File.Hashes.SHA256Hash, sha256url, out _, out _);
-                    if (dlCache.TryGetValue(sha256url, out string? duplicated))
-                    {
-                        if (File.Exists(path))
-                            File.Delete(path);
-                        Console.WriteLine("    @O - Link");
-                        Utils.MakeLink(path, duplicated);
-                        goto E;
-                    }
-                    else if (File.Exists(path))
-                    {
-                        switch (Program.SavemodeFile)
-                        {
-                            case SaveMode.Skip:
-                                Console.WriteLine($"    @O - Skipped");
-                                goto E;
-                            case SaveMode.Replace:
-                                using (FileStream fs = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.Read))
-                                {
-                                    Array256bit sha256local = new();
-                                    SHA256.HashData(fs, sha256local);
-                                    if (sha256local == sha256url)
-                                    {
-                                        Console.WriteLine($"    @O - Skipped (SHA256)");
-                                        goto E;
-                                    }
-                                }
-                                break;
-                        }
-                    }
-                }
-                string? url;
-                using (HttpRequestMessage reqContent = new(HttpMethod.Get, $"{endpoint}/content"))
-                {
-                    reqContent.Headers.Accept.Clear();
-                    reqContent.Headers.Accept.Add(Any);
-                    using HttpResponseMessage respContent = await Client.SendAsync(reqContent, HttpCompletionOption.ResponseHeadersRead);
-                    url = respContent.Headers.Location?.ToString();
-                }
+                PostContext.Log(IOutlinkHandler.MODE, "AuthenticationHeader not set");
+                return;
+            }
+            string sharingToken = EncodeSharingUrl(text);
+            string endpoint = $"https://graph.microsoft.com/v1.0/shares/u!{sharingToken}/driveItem";
+            PostContext.Log(IOutlinkHandler.MODE, $"Metadata {endpoint}");
+            DriveItem? driveItem;
+            string? raw = null;
+            using (HttpRequestMessage reqMetadata = new(HttpMethod.Get, endpoint))
+            {
+                reqMetadata.Headers.Accept.Clear();
+                reqMetadata.Headers.Accept.Add(ApplicationJson);
+                using HttpResponseMessage respMetadata = await odClient.SendAsync(reqMetadata, HttpCompletionOption.ResponseContentRead).C();
+                raw = await respMetadata.Content.ReadAsStringAsync().C();
+                driveItem = await respMetadata.Content.ReadFromJsonAsync(AppJsonSerializerContext.Default.DriveItem).C();
+            }
+            if (driveItem is not { Name: not null, File: not null })
+            {
+                PostContext.Log(IOutlinkHandler.MODE, "Invalid driveItem");
+                PostContext.Log(IOutlinkHandler.MODE, raw);
+                continue;
+            }
+            if (context.PrepareDownload(
+                driveItem.Name,
+                index,
+                out fileName,
+                out path,
+                out string? fileNameNoExt,
+                out string? pathNoExt,
+                IOutlinkHandler.MODE,
+                "o"))
+            {
+                PostContext.Log(IOutlinkHandler.MODE, "Pass Extracted Archive File!");
+                continue;
+            }
+            Array256bit sha256 = new();
+            if (driveItem.File.Hashes.SHA256Hash?.Length is SHA256.HashSizeInBits / 4)
+            {
+                Convert.FromHexString(driveItem.File.Hashes.SHA256Hash, sha256, out _, out _);
+                if (context.SkipDownloadIfAlreadyDone(path, in sha256, IOutlinkHandler.MODE))
+                    goto E;
+            }
+            string? url;
+            using (HttpRequestMessage reqContent = new(HttpMethod.Get, $"{endpoint}/content"))
+            {
+                reqContent.Headers.Accept.Clear();
+                reqContent.Headers.Accept.Add(Any);
+                using HttpResponseMessage respContent = await odClient.SendAsync(reqContent, HttpCompletionOption.ResponseHeadersRead).C();
+                url = respContent.Headers.Location?.ToString();
                 if (string.IsNullOrEmpty(url))
-                    return;
-                Console.WriteLine($"    @O - aria2c!");
-                Program.Aria2cDownload(pageFolderPath, fileName, url);
-            E:
-                if (driveItem.File.Hashes.SHA256Hash?.Length is SHA256.HashSizeInBits / 4)
-                    dlCache[sha256url] = fileName;
-                Utils.SetTime(path,
-                    driveItem.FileSystemInfo.CreatedDateTime ?? driveItem.CreatedDateTime ?? datetime,
-                    driveItem.FileSystemInfo.LastModifiedDateTime ?? driveItem.LastModifiedDateTime ?? datetimeEdited);
-                FileInfo fi = new(path);
-                string d = Path.Combine(fi.DirectoryName ?? "", Path.GetFileNameWithoutExtension(fi.Name));
-                if (!Directory.Exists(d) && !File.Exists(d))
                 {
-                    if (fi.Extension is ".zip" or ".rar" or ".7z" or ".gz" or ".tar")
-                        Program.SevenZipExtract(d, path);
+                    PostContext.Log(IOutlinkHandler.MODE, $"Cannot get URL! Code: {respContent.StatusCode}");
+                    continue;
                 }
             }
+            PostContext.Log(IOutlinkHandler.MODE, "aria2c!");
+            Program.Aria2cDownload(context.PageFolderPath, fileName, url);
+        E:
+            if (driveItem.File.Hashes.SHA256Hash?.Length is SHA256.HashSizeInBits / 4)
+                context.DownloadCache[sha256] = path;
+            Utils.SetTime(path,
+                driveItem.FileSystemInfo.CreatedDateTime ?? driveItem.CreatedDateTime ?? context.Datetime,
+                driveItem.FileSystemInfo.LastModifiedDateTime ?? driveItem.LastModifiedDateTime ?? context.DatetimeEdited);
+            if (fileNameNoExt is not null
+                && pathNoExt is not null
+                && !Directory.Exists(pathNoExt)
+                && !File.Exists(pathNoExt)
+                && Path.GetExtension(path).ToLowerInvariant() is ".zip" or ".rar" or ".7z" or ".gz" or ".tar" or ".r00" or ".001")
+                context.ArchiveParts.Add(pathNoExt, (path, null));
         }
     }
 
@@ -218,7 +209,7 @@ public partial class OneDriveOutlinkHandler : IOutlinkHandler, IDisposable
         GC.SuppressFinalize(this);
     }
 
-    public class DriveFile
+    internal sealed class DriveFile
     {
         [JsonPropertyName("mimeType")]
         public string? MimeType { get; set; }
@@ -227,7 +218,7 @@ public partial class OneDriveOutlinkHandler : IOutlinkHandler, IDisposable
         public Hashes Hashes { get; set; }
     }
 
-    public struct FileSystemInfo
+    internal struct FileSystemInfo
     {
         [JsonPropertyName("createdDateTime")]
         public DateTime? CreatedDateTime { get; set; }
@@ -236,7 +227,7 @@ public partial class OneDriveOutlinkHandler : IOutlinkHandler, IDisposable
         public DateTime? LastModifiedDateTime { get; set; }
     }
 
-    public struct Hashes
+    internal struct Hashes
     {
         [JsonPropertyName("crc32Hash")]
         public string? CRC32Hash { get; set; }
@@ -251,7 +242,7 @@ public partial class OneDriveOutlinkHandler : IOutlinkHandler, IDisposable
         public string? SHA256Hash { get; set; }
     }
 
-    public class DriveItem
+    internal sealed class DriveItem
     {
         [JsonPropertyName("createdDateTime")]
         public DateTime? CreatedDateTime { get; set; }

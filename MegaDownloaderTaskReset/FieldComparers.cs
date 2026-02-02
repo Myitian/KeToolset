@@ -23,14 +23,14 @@ static class FieldComparers
     public static readonly ChildStringValueWithPreprocessorComparer FileUrlAsc = new("URL", Program.DecryptString);
     public static readonly DescComparer<XmlNode> FileUrlDesc = new(FileUrlAsc);
 
-    public sealed class DescComparer<T>(IComparer<T> comparer) : IComparer<T>
+    internal sealed class DescComparer<T>(IComparer<T> comparer) : IComparer<T>
     {
         public int Compare(T? x, T? y)
         {
             return comparer.Compare(y, x);
         }
     }
-    public sealed class ChildStringValueComparer(string name) : IComparer<XmlNode>
+    internal sealed class ChildStringValueComparer(string name) : IComparer<XmlNode>
     {
         public int Compare(XmlNode? x, XmlNode? y)
         {
@@ -39,7 +39,7 @@ static class FieldComparers
                 y?[name]?.Value);
         }
     }
-    public sealed class ChildStringValue2Comparer(string name1, string name2) : IComparer<XmlNode>
+    internal sealed class ChildStringValue2Comparer(string name1, string name2) : IComparer<XmlNode>
     {
         public int Compare(XmlNode? x, XmlNode? y)
         {
@@ -51,7 +51,7 @@ static class FieldComparers
                 y?[name2]?.Value);
         }
     }
-    public sealed class ChildStringValueWithPreprocessorComparer(string name, Func<string, string> preprocessor) : IComparer<XmlNode>
+    internal sealed class ChildStringValueWithPreprocessorComparer(string name, Func<string, string> preprocessor) : IComparer<XmlNode>
     {
         public int Compare(XmlNode? x, XmlNode? y)
         {
@@ -60,7 +60,7 @@ static class FieldComparers
                 preprocessor.InvokeWhenNotNull(y?[name]?.Value));
         }
     }
-    public sealed class ChildNumberValueComparer<T>(string name) : IComparer<XmlNode>
+    internal sealed class ChildNumberValueComparer<T>(string name) : IComparer<XmlNode>
         where T : struct, IParsable<T>
     {
         public int Compare(XmlNode? x, XmlNode? y)

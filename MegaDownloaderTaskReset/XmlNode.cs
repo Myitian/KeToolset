@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Xml;
 
@@ -11,23 +12,29 @@ namespace MegaDownloaderTaskReset;
 /// <item>no other type of elements</item>
 /// </list>
 /// </summary>
-[DebuggerDisplay("Name = {Name}, Value = {Value}, ChildCount = {ChildNodes.Count}")]
-public sealed class XmlNode(string name)
+[DebuggerDisplay("Name = {Name}, Value = {Value}, ChildCount = {ChildCount}")]
+sealed class XmlNode(string name)
 {
-    private readonly Dictionary<string, XmlNode> _map = [];
-    // not recommend to change name
-    public string Name { get; set; } = name;
+    private List<KeyValuePair<string, string>>? _attributes;
+    private List<XmlNode>? _childNodes;
+    private Dictionary<string, XmlNode>? _map;
+    public string Name { get; } = name;
     public string Value { get; private set; } = "";
-    public List<KeyValuePair<string, string>> Attributes { get; } = [];
-    public List<XmlNode> ChildNodes { get; } = [];
-    public XmlNode? this[string name] => _map.TryGetValue(name, out XmlNode? node) ? node : null;
+    public List<KeyValuePair<string, string>> Attributes => _attributes ??= [];
+    public List<XmlNode> ChildNodes => _childNodes ??= [];
+    public int ChildCount => _childNodes?.Count ?? 0;
+    public XmlNode? this[string name] => (_map ??= []).TryGetValue(name, out XmlNode? node) ? node : null;
     public override string ToString()
     {
-        return $"<{Name}>{WebUtility.HtmlEncode(Value)} @ {ChildNodes.Count} childs";
+        return $"<{Name}>{WebUtility.HtmlEncode(Value)} @ {ChildCount} child nodes";
+    }
+    public bool HasAttribute(KeyValuePair<string,string> attr)
+    {
+        return _attributes?.Contains(attr) ?? false;
     }
     public XmlNode GetChildOrAddNew(string name)
     {
-        if (_map.TryGetValue(name, out XmlNode? node))
+        if (_map?.TryGetValue(name, out XmlNode? node) is true)
             return node;
         node = new(name);
         AppendChild(node);
@@ -37,7 +44,7 @@ public sealed class XmlNode(string name)
     {
         Value = "";
         ChildNodes.Add(node);
-        _map.TryAdd(node.Name, node);
+        (_map ??= []).TryAdd(node.Name, node);
         return this;
     }
     public XmlNode AppendAttribute(string key, string value)
@@ -48,8 +55,8 @@ public sealed class XmlNode(string name)
     public XmlNode SetValue(string text)
     {
         Value = text;
-        ChildNodes.Clear();
-        _map.Clear();
+        _childNodes?.Clear();
+        _map?.Clear();
         return this;
     }
     public XmlNode SetValue(IEnumerable<XmlNode> nodes)
@@ -62,15 +69,18 @@ public sealed class XmlNode(string name)
     public void WriteTo(XmlWriter writer)
     {
         writer.WriteStartElement(Name);
-        foreach ((string key, string value) in Attributes)
-            writer.WriteAttributeString(key, value);
-        if (ChildNodes.Count == 0)
-            writer.WriteString(Value);
-        else
+        if (_attributes is not null)
         {
-            foreach (XmlNode child in ChildNodes)
+            foreach ((string key, string value) in _attributes)
+                writer.WriteAttributeString(key, value);
+        }
+        if (_childNodes?.Count is > 0)
+        {
+            foreach (XmlNode child in _childNodes)
                 child.WriteTo(writer);
         }
+        else
+            writer.WriteString(Value);
         writer.WriteEndElement();
     }
     public static XmlNode? ReadFrom(XmlReader reader, out string? text)

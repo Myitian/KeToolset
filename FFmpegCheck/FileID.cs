@@ -5,11 +5,11 @@ using System.Runtime.Versioning;
 
 namespace FFmpegCheck;
 
-public readonly partial struct FileID(ulong volumeIndex, UInt128 fileIndex) : IEquatable<FileID>
+readonly partial struct FileID(ulong volumeIndex, UInt128 fileIndex) : IEquatable<FileID>
 {
     public static FileID Invalid => new(ulong.MaxValue, UInt128.MaxValue);
-    public readonly ulong VolumeIndex = volumeIndex;
-    public readonly UInt128 FileIndex = fileIndex;
+    public ulong VolumeIndex { get; } = volumeIndex;
+    public UInt128 FileIndex { get; } = fileIndex;
     public readonly bool IsInvalid => VolumeIndex == ulong.MaxValue && FileIndex == UInt128.MaxValue;
     public override readonly string ToString() => $"<{VolumeIndex:X8}@{FileIndex:X16}>";
 

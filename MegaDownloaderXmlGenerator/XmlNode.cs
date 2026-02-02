@@ -9,10 +9,9 @@ namespace MegaDownloaderXmlGenerator;
 /// <item>Other node types (such as CDATA and Entity) are not allowed</item>
 /// </list>
 /// </summary>
-public sealed class XmlNode(string name)
+sealed class XmlNode(string name)
 {
-    // not recommend to change name
-    public string Name { get; set; } = name;
+    public string Name { get; } = name;
     public string Value { get; private set; } = "";
     public List<KeyValuePair<string, string>> Attributes { get; } = [];
     public List<XmlNode> ChildNodes { get; } = [];
@@ -21,10 +20,6 @@ public sealed class XmlNode(string name)
         Value = "";
         ChildNodes.Add(node);
         return this;
-    }
-    public XmlNode AppendAttribute(string key, string value)
-    {
-        return AppendAttribute(new(key, value));
     }
     public XmlNode AppendAttribute(KeyValuePair<string, string> attribute)
     {
