@@ -66,18 +66,19 @@ sealed class PostContext(
         [NotNullIfNotNull(nameof(pathNoExt))] out string? fileNameNoExt,
         [NotNullIfNotNull(nameof(fileNameNoExt))] out string? pathNoExt,
         ReadOnlySpan<char> mode,
-        ReadOnlySpan<char> prefixPrefix)
+        ReadOnlySpan<char> seqPrefix)
     {
         string fileNameMain = Utils.ReplaceInvalidFileNameChars(name);
         string unprefixedName = Program.FixSpecialExt(fileNameMain);
-        string prefixedName = $"{prefixPrefix}{index:D3}_{unprefixedName}";
+        string prefixedName = $"{seqPrefix}{index:D3}_{unprefixedName}";
         int extLen = Program.ProcessArchiveName(unprefixedName);
         string finalName = fileName = extLen == 0 ? prefixedName : unprefixedName;
-        path = Path.Combine(PageFolderPath, fileName);
+        path = Path.Combine(PageFolderPath, finalName);
         string ext = Path.GetExtension(unprefixedName);
         bool first = !File.Exists(path);
-        foreach (string oldName in Directory.EnumerateFiles(PageFolderPath, $"{prefixPrefix}{index}_*", Program.simpleNonRecursiveEnumeration)
-                           .Concat(Directory.EnumerateFiles(PageFolderPath, $"{prefixPrefix}{index:D3}_*", Program.simpleNonRecursiveEnumeration))
+        Log(mode, $"Save as {finalName}");
+        foreach (string oldName in Directory.EnumerateFiles(PageFolderPath, $"{seqPrefix}{index}_*", Program.simpleNonRecursiveEnumeration)
+                           .Concat(Directory.EnumerateFiles(PageFolderPath, $"{seqPrefix}{index:D3}_*", Program.simpleNonRecursiveEnumeration))
                            .Concat(Directory.EnumerateFiles(PageFolderPath, $"{index}_*{ext}", Program.simpleNonRecursiveEnumeration))
                            .Concat(Directory.EnumerateFiles(PageFolderPath, $"{index:D3}_*{ext}", Program.simpleNonRecursiveEnumeration))
                            .Concat(Directory.EnumerateFiles(PageFolderPath, unprefixedName, Program.simpleNonRecursiveEnumeration))

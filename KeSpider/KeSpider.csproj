@@ -10,7 +10,7 @@
     <OutputType>Exe</OutputType>
     <RollForward>LatestMajor</RollForward>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <Version>1.1</Version>
+    <Version>1.2</Version>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="UTF.Unknown" Version="*" />
