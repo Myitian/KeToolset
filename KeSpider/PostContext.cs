@@ -81,7 +81,8 @@ sealed class PostContext(
                            .Concat(Directory.EnumerateFiles(PageFolderPath, $"{index}_*{ext}", Program.simpleNonRecursiveEnumeration))
                            .Concat(Directory.EnumerateFiles(PageFolderPath, $"{index:D3}_*{ext}", Program.simpleNonRecursiveEnumeration))
                            .Concat(Directory.EnumerateFiles(PageFolderPath, unprefixedName, Program.simpleNonRecursiveEnumeration))
-                           .Where(it => !Path.GetFileName(it.AsSpan()).Equals(finalName, StringComparison.Ordinal)))
+                           .Where(it => !Path.GetFileName(it.AsSpan()).Equals(finalName, StringComparison.Ordinal))
+                           .Where(it => !it.AsSpan().EndsWith(".aria2", StringComparison.OrdinalIgnoreCase)))
         {
             if (first)
             {
