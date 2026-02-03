@@ -5,6 +5,7 @@ namespace KeCore;
 
 public static class KeCoreUtils
 {
+    public delegate bool Predicate(PostResult post, out int compareResult);
     internal static ConfiguredTaskAwaitable C(this Task task)
         => task.ConfigureAwait(false);
     internal static ConfiguredTaskAwaitable<TResult> C<TResult>(this Task<TResult> task)
@@ -16,7 +17,7 @@ public static class KeCoreUtils
         string domain,
         string service,
         string user,
-        Predicate<PostsResult>? predicate = null)
+        Predicate? predicate = null)
     {
         HashSet<PostInfo> posts = [];
         int offset = 0;
@@ -24,10 +25,14 @@ public static class KeCoreUtils
         do
         {
             pageSize = 50;
-            await foreach (PostsResult post in PostsResult.Request(client, domain, service, user, offset).C())
+            await foreach (PostResult post in PostResult.Request(client, domain, service, user, offset).C())
             {
-                if (predicate?.Invoke(post) is false)
-                    break;
+                if (predicate?.Invoke(post, out int cmp) is false)
+                {
+                    if (cmp < 0)
+                        break;
+                    continue;
+                }
                 posts.Add(new(post, domain));
                 offset++;
                 pageSize--;

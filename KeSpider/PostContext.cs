@@ -134,7 +134,7 @@ sealed class PostContext(
                                     if (Encoding is null)
                                     {
                                         Log(MODE, "zip! No suitable encoding, fallback to 7z");
-                                        goto default;
+                                        goto DEFAULT;
                                     }
                                     Log(MODE, $"zip! OverridenBy: {(u = Encoding).EncodingName}");
                                     break;
@@ -152,6 +152,7 @@ sealed class PostContext(
                         pwd = Console.ReadLine();
                         goto default;
                     default:
+                    DEFAULT:
                         if (pwd is null)
                             Log(MODE, $"7z! \"{p1}\" \"{path}\"");
                         else

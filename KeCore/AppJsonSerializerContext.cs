@@ -5,5 +5,5 @@ namespace KeCore;
 
 [JsonSerializable(typeof(Archive))]
 [JsonSerializable(typeof(PostRoot))]
-[JsonSerializable(typeof(PostsResult))]
+[JsonSerializable(typeof(PostResult))]
 sealed partial class AppJsonSerializerContext : JsonSerializerContext;

@@ -3,7 +3,7 @@ using System.Text.Json.Serialization;
 
 namespace KeCore.API;
 
-public record struct PostsResult
+public record struct PostResult
 {
     [JsonPropertyName("id")]
     public string ID { get; set; }
@@ -14,7 +14,7 @@ public record struct PostsResult
     [JsonPropertyName("title")]
     public string Title { get; set; }
 
-    public static async IAsyncEnumerable<PostsResult> Request(
+    public static async IAsyncEnumerable<PostResult> Request(
         HttpClient client,
         string domain,
         string service,
@@ -35,9 +35,9 @@ public record struct PostsResult
             using HttpResponseMessage resp = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead).C();
             if (resp.IsSuccessStatusCode)
             {
-                await foreach (PostsResult posts in resp.Content
-                    .ReadFromJsonAsAsyncEnumerable(AppJsonSerializerContext.Default.PostsResult).C())
-                    yield return posts;
+                await foreach (PostResult post in resp.Content
+                    .ReadFromJsonAsAsyncEnumerable(AppJsonSerializerContext.Default.PostResult).C())
+                    yield return post;
                 yield break;
             }    
             Console.WriteLine($"HTTP STATUS CODE {resp.StatusCode}");
