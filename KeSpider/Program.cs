@@ -99,14 +99,14 @@ static class Program
 
     public static string FixSpecialExt(string name)
     {
-        name = name.TrimEnd('.');
+        ReadOnlySpan<char> nameSpan = name.TrimEnd(" .");
         if (!SpecialExtFix)
-            return name;
+            return name.Length == nameSpan.Length ? name : nameSpan.ToString();
         var lookup = SpecialExts.GetAlternateLookup<ReadOnlySpan<char>>();
-        ReadOnlySpan<char> ext = Path.GetExtension(name.AsSpan());
+        ReadOnlySpan<char> ext = Path.GetExtension(nameSpan);
         if (!lookup.TryGetValue(ext, out string? newExt))
-            return name;
-        return string.Concat(name.AsSpan(0, name.Length - ext.Length), newExt);
+            return name.Length == nameSpan.Length ? name : nameSpan.ToString();
+        return string.Concat(nameSpan[..^ext.Length], newExt);
     }
     public static int ProcessArchiveName(string fileName)
     {
@@ -372,7 +372,7 @@ static class Program
                 goto END;
             }
             ReadOnlySpan<char> rawName = Utils.XTrim(postRoot.Post.Title);
-            string pagename = Utils.ReplaceInvalidFileNameChars(rawName.TrimEnd().TrimEnd('.'));
+            string pagename = Utils.ReplaceInvalidFileNameChars(rawName.TrimEnd(" ."));
             DateTime datetime = Utils.NormalizeTime(postRoot.Post.Published).ToLocalTime();
             DateTime datetimeEdited = Utils.NormalizeTime(postRoot.Post.Edited ?? postRoot.Post.Published).ToLocalTime();
             string pagenameWithID = $"{post.ID}_{pagename}";

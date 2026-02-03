@@ -27,13 +27,10 @@ public static class KeCoreUtils
             pageSize = 50;
             await foreach (PostResult post in PostResult.Request(client, domain, service, user, offset).C())
             {
-                if (predicate?.Invoke(post, out int cmp) is false)
-                {
-                    if (cmp < 0)
-                        break;
-                    continue;
-                }
-                posts.Add(new(post, domain));
+                if (predicate?.Invoke(post, out int cmp) is not false)
+                    posts.Add(new(post, domain));
+                else if (cmp < 0)
+                    break;
                 offset++;
                 pageSize--;
             }

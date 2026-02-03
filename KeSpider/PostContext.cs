@@ -51,7 +51,7 @@ sealed class PostContext(
     {
         if (extLen > 0)
         {
-            fileNameNoExt = fileName[..^extLen];
+            fileNameNoExt = fileName.AsSpan()[..^extLen].TrimEnd(" .").ToString();
             pathNoExt = Path.Combine(PageFolderPath, fileNameNoExt);
             return Directory.Exists(pathNoExt);
         }
@@ -68,8 +68,7 @@ sealed class PostContext(
         ReadOnlySpan<char> mode,
         ReadOnlySpan<char> seqPrefix)
     {
-        string fileNameMain = Utils.ReplaceInvalidFileNameChars(name);
-        string unprefixedName = Program.FixSpecialExt(fileNameMain);
+        string unprefixedName = Program.FixSpecialExt(Utils.ReplaceInvalidFileNameChars(name));
         string prefixedName = $"{seqPrefix}{index:D3}_{unprefixedName}";
         int extLen = Program.ProcessArchiveName(unprefixedName);
         string finalName = fileName = extLen == 0 ? prefixedName : unprefixedName;
