@@ -317,22 +317,35 @@ static class Program
         Regex? userRegex = string.IsNullOrEmpty(userRegexStr) ? null : new(userRegexStr);
         return await KeCoreUtils.LoadAllPosts(client, domain, service, user, Predicate).C();
 
-        bool Predicate(PostsResult post)
+        bool Predicate(PostResult post, out int compareResult)
         {
             if (long.TryParse(post.ID, out long postID))
             {
                 if (minID.HasValue && postID < minID)
+                {
+                    compareResult = -1;
                     return false;
+                }
                 if (maxID.HasValue && postID > maxID)
+                {
+                    compareResult = 1;
                     return false;
+                }
             }
             else
             {
                 if (!string.IsNullOrEmpty(minIDStr) && post.ID.CompareTo(minIDStr) < 0)
+                {
+                    compareResult = -1;
                     return false;
+                }
                 if (!string.IsNullOrEmpty(maxIDStr) && post.ID.CompareTo(maxIDStr) > 0)
+                {
+                    compareResult = 1;
                     return false;
+                }
             }
+            compareResult = 0;
             return userRegex?.IsMatch(post.Title) ?? true;
         }
     }
