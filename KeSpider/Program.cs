@@ -132,6 +132,9 @@ static class Program
     }
     public static void Aria2cDownload(string folder, string name, string url, params IEnumerable<string> headers)
     {
+        string target = Path.Combine(folder, name);
+        if (File.Exists(target)) // force unlink possible hard links
+            File.Delete(target);
         ProcessStartInfo aria2c = new(aria2cFile, [
             $"--all-proxy={proxy}",
             "--console-log-level=error",
