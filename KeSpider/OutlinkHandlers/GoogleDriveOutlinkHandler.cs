@@ -27,7 +27,7 @@ sealed partial class GoogleDriveOutlinkHandler : IOutlinkHandler
                 continue;
             string fileName = Utils.ReplaceInvalidFileNameChars(text) + ".placeholder.txt";
             string path = Path.Combine(context.PageFolderPath, fileName);
-            Console.WriteLine($"    @O - Find Outlink of GoogleDrive: {text}");
+            PostContext.Log(IOutlinkHandler.MODE, $"Find Outlink of GoogleDrive: {text}");
             int index = context.OutlinkCounter++;
 
             if (Program.SaveModeContent == SaveMode.Skip && File.Exists(path))
