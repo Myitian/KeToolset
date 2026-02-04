@@ -50,11 +50,11 @@ static class Program
                 },
                 new("--hwaccel", 1, "-hw")
                 {
-                    Info = "path: ffmpeg hwaccel (optional)"
+                    Info = "string: ffmpeg hwaccel (optional)"
                 },
                 new("--decoder", 1, "-d")
                 {
-                    Info = "path: ffmpeg codec:v (optional)"
+                    Info = "string: ffmpeg codec:v (optional)"
                 },
                 new("--dry-run", 1, "-dry")
                 {

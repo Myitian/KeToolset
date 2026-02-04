@@ -406,6 +406,35 @@ static class Program
                             $"创建文件夹 {DarkYellowFG}\"{YellowFG}{localPath.Value}{DarkYellowFG}\"{Reset}");
                         Directory.CreateDirectory(localPath.Value);
                     }
+                    try
+                    {
+                        FileInfo fi = new(Path.Combine(localPath.Value, file["NombreFichero"]?.Value ?? ""));
+                        if (fi.Exists)
+                        {
+                            if (long.TryParse(file["TamanoBytes"]?.Value, out long length) && length != fi.Length)
+                                continue;
+                            string lengthStr = length.ToString();
+                            file.GetChildOrAddNew("TamanoBytes").SetValue(lengthStr);
+                            file.GetChildOrAddNew("BytesDescargados").SetValue(lengthStr);
+                            file.GetChildOrAddNew("NumeroConexionesAbiertas").SetValue("0");
+                            file.GetChildOrAddNew("NumeroChunksAsignados").SetValue("0");
+                            file.GetChildOrAddNew("Porcentaje").SetValue("100");
+                            file.GetChildOrAddNew("DescargaComenzada").SetValue("True");
+                            file.GetChildOrAddNew("DescargaProcesada").SetValue("True");
+                            file.GetChildOrAddNew("ExtraccionFicheroAutomatica").SetValue("False");
+                            file.GetChildOrAddNew("VelocidadKBs").SetValue("0");
+                            file.GetChildOrAddNew("EstadoDescarga").SetValue("Completado");
+                            file.GetChildOrAddNew("MarcadoParaBorrarFicheroLocal").SetValue("False");
+                            file.GetChildOrAddNew("TiempoEstimadoDescarga").SetValue("");
+                            file.GetChildOrAddNew("PausaIndividual").SetValue("False");
+                            file.GetChildOrAddNew("DescargaIndividual").SetValue("False");
+                            file.GetChildOrAddNew("LimiteVelocidad").SetValue("0");
+                            file.GetChildOrAddNew("DatosPartes").SetValue("");
+                            WriteLine(Console.Out,
+                                $"完成文件 {DarkYellowFG}\"{YellowFG}{fi.FullName}{DarkYellowFG}\"{Reset}");
+                        }
+                    }
+                    catch { }
                 }
             }
             Console.WriteLine("修复完成！");

@@ -95,6 +95,7 @@ static class Program
         outlinkHandlers.Add(MediafireOutlinkHandler.Instance);
         outlinkHandlers.Add(new SimpleOutlinkHandler("Mega", Regexes.RegMega(), ""));
         outlinkHandlers.Add(new SimpleOutlinkHandler("BaiduPan", Regexes.RegBaiduPan(), "?pwd="));
+        outlinkHandlers.Add(new SimpleOutlinkHandler("PikPak", Regexes.RegPikPak()));
     }
 
     public static string FixSpecialExt(string name)

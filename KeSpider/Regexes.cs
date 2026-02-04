@@ -19,8 +19,11 @@ static partial class Regexes
     [GeneratedRegex(@"(?<url>https?://mega(?:\.co)?\.nz/[^""'<>\s]+)(?:<[^\>]+>)?(?<ext>#[a-zA-Z0-9\-_]+)")]
     internal static partial Regex RegMega();
 
-    [GeneratedRegex(@"(?<url>https://pan\.baidu\.com/s/[^<>""?]+)(?:[\S\s]*?(?:提取码|p(?:ass)?w(?:or)?d)\s*[：:=]\s*(?<ext>[\dA-Za-z]{4}))?")]
+    [GeneratedRegex(@"(?<url>https?://pan\.baidu\.com/s/[^<>""?]+)(?:[\S\s]*?(?:提取码|p(?:ass)?w(?:or)?d)\s*[：:=]\s*(?<ext>[\dA-Za-z]{4}))?")]
     internal static partial Regex RegBaiduPan();
+
+    [GeneratedRegex(@"(?<url>https?://mypikpak\.com/s/[a-zA-Z0-9\-_]+)")]
+    internal static partial Regex RegPikPak();
 
 
     [GeneratedRegex(@"\.(?<num>\d+)$")]
