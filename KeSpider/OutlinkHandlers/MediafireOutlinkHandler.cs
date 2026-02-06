@@ -60,7 +60,7 @@ sealed partial class MediafireOutlinkHandler : IOutlinkHandler
                     PostContext.Log(IOutlinkHandler.MODE, "Pass Extracted Archive File!");
                     continue;
                 }
-                if (!PostContext.SkipDownloadIfAlreadyDone(path, IOutlinkHandler.MODE))
+                if (!PostContext.SkipDownloadIfAlreadyDone(path, IOutlinkHandler.MODE, Program.SaveModeOutlink))
                 {
                     PostContext.Log(IOutlinkHandler.MODE, "aria2c!");
                     Program.Aria2cDownload(context.PageFolderPath, fileName, urlDirect);

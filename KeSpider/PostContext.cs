@@ -34,9 +34,15 @@ sealed class PostContext(
     {
         Console.WriteLine($"    @{mode} - {message}");
     }
-    public static bool SkipDownloadIfAlreadyDone(string path, ReadOnlySpan<char> mode)
+    public static bool IsArchiveExtension(ReadOnlySpan<char> ext)
     {
-        if (File.Exists(path) && Program.SaveModePicture == SaveMode.Skip)
+        Span<char> span = stackalloc char[ext.Length];
+        int len = ext.ToLowerInvariant(span);
+        return span[..len] is ".zip" or ".rar" or ".7z" or ".gz" or ".tar" or ".r00" or ".001";
+    }
+    public static bool SkipDownloadIfAlreadyDone(string path, ReadOnlySpan<char> mode, SaveMode saveMode)
+    {
+        if (File.Exists(path) && saveMode is SaveMode.Skip or SaveMode.ReplaceOrSkip)
         {
             Log(mode, "Skipped");
             return true;
@@ -46,14 +52,35 @@ sealed class PostContext(
     public bool ShouldSkipIfExtracted(
         string fileName,
         int extLen,
+        int index,
         [NotNullIfNotNull(nameof(pathNoExt))] out string? fileNameNoExt,
-        [NotNullIfNotNull(nameof(fileNameNoExt))] out string? pathNoExt)
+        [NotNullIfNotNull(nameof(fileNameNoExt))] out string? pathNoExt,
+        ReadOnlySpan<char> mode)
     {
         if (extLen > 0)
         {
             fileNameNoExt = fileName.AsSpan()[..^extLen].TrimEnd(" .").ToString();
             pathNoExt = Path.Combine(PageFolderPath, fileNameNoExt);
-            return Directory.Exists(pathNoExt);
+            bool any = Directory.Exists(pathNoExt);
+            bool first = !any;
+            foreach (string oldName in Directory.EnumerateDirectories(PageFolderPath, $"{index}_{fileNameNoExt}", Program.simpleNonRecursiveEnumeration)
+                               .Concat(Directory.EnumerateDirectories(PageFolderPath, $"{index:D3}_{fileNameNoExt}", Program.simpleNonRecursiveEnumeration))
+                               .Concat(Directory.EnumerateDirectories(PageFolderPath, fileNameNoExt, Program.simpleNonRecursiveEnumeration)))
+            {
+                if (first)
+                {
+                    first = false;
+                    Log(mode, "Fix old extracted archive!");
+                    Directory.Move(oldName, pathNoExt);
+                }
+                else if (!oldName.Equals(pathNoExt, StringComparison.OrdinalIgnoreCase))
+                {
+                    Log(mode, "Delete extra old extracted archive!");
+                    Directory.Delete(oldName, true);
+                }
+                any = true;
+            }
+            return any;
         }
         fileNameNoExt = pathNoExt = null;
         return false;
@@ -96,7 +123,7 @@ sealed class PostContext(
                 File.Delete(oldName);
             }
         }
-        return ShouldSkipIfExtracted(unprefixedName, extLen, out fileNameNoExt, out pathNoExt);
+        return ShouldSkipIfExtracted(unprefixedName, extLen, index, out fileNameNoExt, out pathNoExt, mode);
     }
 
     public void ProcessArchives()
@@ -223,36 +250,12 @@ sealed class PostContext(
                 Utils.SetTime(path, Datetime, DatetimeEdited);
                 if (fileNameNoExt is not null
                     && pathNoExt is not null
-                    && !Directory.Exists(pathNoExt)
-                    && !File.Exists(pathNoExt))
+                    && !File.Exists(pathNoExt)
+                    && IsArchiveExtension(Path.GetExtension(path.AsSpan())))
                 {
-                    bool first = true;
-                    bool any = false;
-                    foreach (string oldName in Directory.EnumerateDirectories(PageFolderPath, $"{index}_{fileNameNoExt}", Program.simpleNonRecursiveEnumeration)
-                                       .Concat(Directory.EnumerateDirectories(PageFolderPath, $"{index:D3}_{fileNameNoExt}", Program.simpleNonRecursiveEnumeration))
-                                       .Concat(Directory.EnumerateDirectories(PageFolderPath, fileNameNoExt, Program.simpleNonRecursiveEnumeration))
-                                       .Where(it => !Path.GetFileName(it.AsSpan()).Equals(fileNameNoExt, StringComparison.Ordinal)))
-                    {
-                        if (first)
-                        {
-                            first = false;
-                            Log(MODE, "Fix old extracted archive!");
-                            Directory.Move(oldName, pathNoExt);
-                        }
-                        else
-                        {
-                            Log(MODE, "Delete extra old extracted archive!");
-                            Directory.Delete(oldName, true);
-                        }
-                        any = true;
-                    }
-                    if (!any && Path.GetExtension(path).ToLowerInvariant()
-                        is ".zip" or ".rar" or ".7z" or ".gz" or ".tar" or ".r00" or ".001")
-                    {
-                        Archive archive = await Archive.Request(Client, domain, file.Stem).C();
-                        string? password = archive.Password;
-                        ArchiveParts.Add(pathNoExt, (path, password));
-                    }
+                    Archive archive = await Archive.Request(Client, domain, file.Stem).C();
+                    string? password = archive.Password;
+                    ArchiveParts.Add(pathNoExt, (path, password));
                 }
             }
             catch (Exception ex)
@@ -305,6 +308,11 @@ sealed class PostContext(
     {
         if (DownloadCache.TryGetValue(sha256, out string? duplicated))
         {
+            if (path == duplicated)
+            {
+                Log(mode, "Skip (Warning: same file name)");
+                return true;
+            }
             if (File.Exists(path))
                 File.Delete(path);
             Log(mode, "Link");
@@ -318,6 +326,7 @@ sealed class PostContext(
                 case SaveMode.Skip:
                     Log(mode, "Skipped");
                     return true;
+                case SaveMode.ReplaceOrSkip:
                 case SaveMode.Replace:
                     using (FileStream fs = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.Read))
                     {

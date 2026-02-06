@@ -1,6 +1,7 @@
 using KeCore;
 using KeCore.API;
 using KeSpider.OutlinkHandlers;
+using SimpleArgs;
 using System.Diagnostics;
 using System.Net;
 using System.Reflection;
@@ -14,10 +15,16 @@ namespace KeSpider;
 
 static class Program
 {
-    static readonly HashSet<IOutlinkHandler> outlinkHandlers = [];
-    static readonly string proxy = "127.0.0.1:10809";
-    static readonly string aria2cFile = "aria2c";
-    static readonly string _7zFile = "7z";
+    static readonly HashSet<IOutlinkHandler> outlinkHandlers =
+        [GoogleDriveOutlinkHandler.Instance,
+        OneDriveOutlinkHandler.Instance,
+        MediafireOutlinkHandler.Instance,
+        new SimpleOutlinkHandler("Mega", Regexes.RegMega(), ""),
+        new SimpleOutlinkHandler("BaiduPan", Regexes.RegBaiduPan(), "?pwd="),
+        new SimpleOutlinkHandler("PikPak", Regexes.RegPikPak())];
+    static string proxy = "127.0.0.1:10809";
+    static string aria2cExecutable = "aria2c";
+    static string _7zExecutable = "7z";
     internal static readonly Regex rXXX = Regexes.RegMultiPartNumberOnly();
     internal static readonly Regex rPartXRar = Regexes.RegMultiPartRar();
     internal static readonly Regex rRxx = Regexes.RegMultiPartRxx();
@@ -29,75 +36,6 @@ static class Program
         MatchCasing = MatchCasing.CaseInsensitive,
         MatchType = MatchType.Simple,
     };
-
-    static Program()
-    {
-        bool a2c = false;
-        bool _7z = false;
-        ReadOnlySpan<char> path = Environment.GetEnvironmentVariable("Path");
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-        {
-            foreach (ReadOnlySpan<char> item in new WindowsEnvironmentPathEnumerator(path))
-            {
-                if (!a2c)
-                {
-                    string exePath = Path.Combine(item.ToString(), "aria2c.exe");
-                    if (File.Exists(exePath))
-                    {
-                        aria2cFile = exePath;
-                        a2c = true;
-                    }
-                }
-                if (!_7z)
-                {
-                    string exePath = Path.Combine(item.ToString(), "7z.exe");
-                    if (File.Exists(exePath))
-                    {
-                        _7zFile = exePath;
-                        _7z = true;
-                    }
-                }
-                if (a2c && _7z)
-                    break;
-            }
-        }
-        else
-        {
-            foreach (Range range in path.Split(Path.PathSeparator))
-            {
-                ReadOnlySpan<char> item = path[range].Trim();
-                if (item.IsEmpty)
-                    continue;
-                if (!a2c)
-                {
-                    string exePath = Path.Combine(item.ToString(), "aria2c");
-                    if (File.Exists(exePath))
-                    {
-                        aria2cFile = exePath;
-                        a2c = true;
-                    }
-                }
-                if (!_7z)
-                {
-                    string exePath = Path.Combine(item.ToString(), "7z");
-                    if (File.Exists(exePath))
-                    {
-                        _7zFile = exePath;
-                        _7z = true;
-                    }
-                }
-                if (a2c && _7z)
-                    break;
-            }
-        }
-        outlinkHandlers.Add(GoogleDriveOutlinkHandler.Instance);
-        outlinkHandlers.Add(OneDriveOutlinkHandler.Instance);
-        outlinkHandlers.Add(MediafireOutlinkHandler.Instance);
-        outlinkHandlers.Add(new SimpleOutlinkHandler("Mega", Regexes.RegMega(), ""));
-        outlinkHandlers.Add(new SimpleOutlinkHandler("BaiduPan", Regexes.RegBaiduPan(), "?pwd="));
-        outlinkHandlers.Add(new SimpleOutlinkHandler("PikPak", Regexes.RegPikPak()));
-    }
-
     public static string FixSpecialExt(string name)
     {
         ReadOnlySpan<char> nameSpan = name.TrimEnd(" .");
@@ -134,9 +72,9 @@ static class Program
     public static void Aria2cDownload(string folder, string name, string url, params IEnumerable<string> headers)
     {
         string target = Path.Combine(folder, name);
-        if (File.Exists(target)) // force unlink possible hard links
+        if (File.Exists(target) && Utils.IsHardlink(target)) // force unlink possible hard links
             File.Delete(target);
-        ProcessStartInfo aria2c = new(aria2cFile, [
+        ProcessStartInfo aria2c = new(aria2cExecutable, [
             $"--all-proxy={proxy}",
             "--console-log-level=error",
             "--auto-file-renaming=false",
@@ -157,7 +95,7 @@ static class Program
     }
     public static void SevenZipExtract(string folder, string path, string? password = null)
     {
-        ProcessStartInfo _7z = new(_7zFile, [
+        ProcessStartInfo _7z = new(_7zExecutable, [
             "x",
             $"-o{folder}",
             .. password is not null ? [$"-p{password}"] : Enumerable.Empty<string>(),
@@ -178,26 +116,63 @@ static class Program
     public static SaveMode SaveModeJson { get; private set; } = SaveMode.Replace;
     public static SaveMode SaveModeFile { get; private set; } = SaveMode.Replace;
     public static SaveMode SaveModeContent { get; private set; } = SaveMode.Replace;
-    public static SaveMode SaveModeOutlink { get; private set; } = SaveMode.Replace;
+    public static SaveMode SaveModeOutlink { get; private set; } = SaveMode.ReplaceOrSkip;
     public static SaveMode SaveModePicture { get; private set; } = SaveMode.Replace;
-
-    static async Task Main()
+    public static string AutoDetectExecutable(string name)
+    {
+        ReadOnlySpan<char> path = Environment.GetEnvironmentVariable("Path");
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            name = $"{name}.exe";
+            foreach (ReadOnlySpan<char> item in new WindowsEnvironmentPathEnumerator(path))
+            {
+                string exePath = Path.Combine(item.ToString(), name);
+                if (File.Exists(exePath))
+                    return exePath;
+            }
+        }
+        else
+        {
+            foreach (Range range in path.Split(Path.PathSeparator))
+            {
+                string exePath = Path.Combine(path[range].ToString(), "aria2c");
+                if (File.Exists(exePath))
+                    return exePath;
+            }
+        }
+        return name;
+    }
+    public static async Task Main(string[] args)
     {
         Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
         Console.InputEncoding = Console.OutputEncoding = Encoding.UTF8;
+        ArgParser argx = new(args, ignoreCase: true,
+            new("--help", 0, "-h", "-?"),
+            new("--7z-executable", 1, "-7z"),
+            new("--aria2c-executable", 1, "-aria2c"),
+            new("--aria2c-arguments", 1, "-aria2c-args"),
+            new("--http-proxy", 1, "-p"));
+        // TODO: args
+
+        aria2cExecutable = AutoDetectExecutable("aria2c");
+        _7zExecutable = AutoDetectExecutable("7z");
+
+        AssemblyName assembly = Assembly.GetExecutingAssembly().GetName();
+        Console.WriteLine($"{assembly.Name} v{assembly.Version}");
+        Console.WriteLine($"Use aria2c: {aria2cExecutable}");
+        Console.WriteLine($"Use 7z: {_7zExecutable}");
+        Console.WriteLine($"Use proxy: {proxy}");
+
+        bool useProxy = !string.IsNullOrEmpty(proxy);
         using SocketsHttpHandler handler = new()
         {
             AutomaticDecompression = DecompressionMethods.All,
             AllowAutoRedirect = true,
-            UseProxy = true
+            UseProxy = useProxy,
+            Proxy = useProxy ? new WebProxy(proxy) : null
         };
         using HttpClient client = new(handler);
         client.DefaultRequestHeaders.Accept.Add(new("text/css")); // the website's strange firewall rule for API requests
-        AssemblyName assembly = Assembly.GetExecutingAssembly().GetName();
-        Console.WriteLine($"{assembly.Name} v{assembly.Version}");
-        Console.WriteLine($"Use aria2c: {aria2cFile}");
-        Console.WriteLine($"Use 7z: {_7zFile}");
-        Console.WriteLine($"Use proxy: {proxy}");
 
         Console.WriteLine("Mode [0:All/1:Selected]?:");
         bool all = Console.ReadLine()?.Trim() != "1";
@@ -214,11 +189,11 @@ static class Program
         Console.WriteLine("Current Settings:");
 
         Console.WriteLine("OverridingEncoding: " + (encoding?.EncodingName ?? "null"));
-        Console.WriteLine("dl_json: " + DownloadJson);
-        Console.WriteLine("dl_file: " + DownloadFile);
-        Console.WriteLine("dl_content: " + DownloadContent);
-        Console.WriteLine("dl_outlink: " + DownloadOutlink);
-        Console.WriteLine("dl_picture: " + DownloadPicture);
+        Console.WriteLine("download_json: " + DownloadJson);
+        Console.WriteLine("download_file: " + DownloadFile);
+        Console.WriteLine("download_content: " + DownloadContent);
+        Console.WriteLine("download_outlink: " + DownloadOutlink);
+        Console.WriteLine("download_picture: " + DownloadPicture);
         Console.WriteLine("savemode_json: " + SaveModeJson);
         Console.WriteLine("savemode_file: " + SaveModeFile);
         Console.WriteLine("savemode_content: " + SaveModeContent);
@@ -248,8 +223,7 @@ static class Program
         Console.WriteLine("Press any key to exit the program.");
         Console.ReadKey();
     }
-
-    private static Encoding? GetEncoding(string? encName)
+    public static Encoding? GetEncoding(string? encName)
     {
         if (int.TryParse(encName, out int codepage))
         {
@@ -269,8 +243,7 @@ static class Program
         }
         return null;
     }
-
-    private static HashSet<PostInfo> LoadSelectedPosts()
+    public static HashSet<PostInfo> LoadSelectedPosts()
     {
         Regex rPostPage = Regexes.RegPostPage();
         HashSet<PostInfo> posts = [];
@@ -290,8 +263,7 @@ static class Program
         }
         return posts;
     }
-
-    private static async Task<HashSet<PostInfo>> LoadAllPosts(HttpClient client)
+    public static async Task<HashSet<PostInfo>> LoadAllPosts(HttpClient client)
     {
         Regex rMainPage = Regexes.RegMainPage();
         HashSet<PostInfo> posts = [];
@@ -353,8 +325,7 @@ static class Program
             return userRegex?.IsMatch(post.Title) ?? true;
         }
     }
-
-    private static async Task<int> ProcessPost(
+    public static async Task<int> ProcessPost(
         HttpClient client,
         HashSet<PostInfo> posts,
         Encoding? encoding,
@@ -370,7 +341,7 @@ static class Program
             if (postRoot is null)
             {
                 Console.WriteLine($"Failed to get post https://{post.Domain}/api/v1/{post.Service}/user/{post.User}/post/{postRoot}");
-                goto END;
+                return i;
             }
             ReadOnlySpan<char> rawName = Utils.XTrim(postRoot.Post.Title);
             string pagename = Utils.ReplaceInvalidFileNameChars(rawName.TrimEnd(" ."));
@@ -413,7 +384,6 @@ static class Program
             Console.WriteLine(ex.Message);
             Console.WriteLine(ex.StackTrace);
         }
-    END:
         return i;
     }
 }

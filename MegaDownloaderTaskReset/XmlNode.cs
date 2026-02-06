@@ -1,5 +1,4 @@
 ﻿using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Xml;
 
@@ -28,7 +27,7 @@ sealed class XmlNode(string name)
     {
         return $"<{Name}>{WebUtility.HtmlEncode(Value)} @ {ChildCount} child nodes";
     }
-    public bool HasAttribute(KeyValuePair<string,string> attr)
+    public bool HasAttribute(KeyValuePair<string, string> attr)
     {
         return _attributes?.Contains(attr) ?? false;
     }

@@ -37,19 +37,19 @@ readonly partial struct FileID(ulong volumeIndex, UInt128 fileIndex) : IEquatabl
     [StructLayout(LayoutKind.Sequential)]
     private readonly partial struct BY_HANDLE_FILE_INFORMATION
     {
-        private readonly uint _A; // useless in this project
-        private readonly uint _B; // useless in this project
-        private readonly uint _C; // useless in this project
-        private readonly uint _D; // useless in this project
-        private readonly uint _E; // useless in this project
-        private readonly uint _F; // useless in this project
-        private readonly uint _G; // useless in this project
-        private readonly uint VolumeSerialNumber;
-        private readonly uint _I; // useless in this project
-        private readonly uint _J; // useless in this project
-        private readonly uint _K; // useless in this project
-        private readonly uint FileIndexHigh;
-        private readonly uint FileIndexLow;
+        readonly uint FileAttributes;       // unused in this project
+        readonly uint CreationTimeLow;      // unused in this project
+        readonly uint CreationTimeHigh;     // unused in this project
+        readonly uint LastAccessTimeLow;    // unused in this project
+        readonly uint LastAccessTimeHigh;   // unused in this project
+        readonly uint LastWriteTimeLow;     // unused in this project
+        readonly uint LastWriteTimeHigh;    // unused in this project
+        readonly uint VolumeSerialNumber;
+        readonly uint FileSizeHigh;         // unused in this project
+        readonly uint FileSizeLow;          // unused in this project
+        readonly uint NumberOfLinks;        // unused in this project
+        readonly uint FileIndexHigh;
+        readonly uint FileIndexLow;
 
         [LibraryImport("kernel32", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
@@ -71,9 +71,9 @@ readonly partial struct FileID(ulong volumeIndex, UInt128 fileIndex) : IEquatabl
     [StructLayout(LayoutKind.Sequential)]
     private readonly partial struct FILE_ID_INFO
     {
-        private readonly ulong VolumeSerialNumber;
-        private readonly ulong FileIdLow;
-        private readonly ulong FileIdHigh;
+        readonly ulong VolumeSerialNumber;
+        readonly ulong FileIdLow;
+        readonly ulong FileIdHigh;
 
         [LibraryImport("kernel32", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
@@ -101,23 +101,23 @@ readonly partial struct FileID(ulong volumeIndex, UInt128 fileIndex) : IEquatabl
     [StructLayout(LayoutKind.Sequential)]
     internal readonly partial struct Stat
     {
-        private readonly int _A; // useless in this project
-        private readonly int _B; // useless in this project
-        private readonly uint _C; // useless in this project
-        private readonly uint _D; // useless in this project
-        private readonly long _E; // useless in this project
-        private readonly long _F; // useless in this project
-        private readonly long _G; // useless in this project
-        private readonly long _H; // useless in this project
-        private readonly long _I; // useless in this project
-        private readonly long _J; // useless in this project
-        private readonly long _K; // useless in this project
-        private readonly long _L; // useless in this project
-        private readonly long _M; // useless in this project
-        private readonly long Dev;
-        private readonly long _O; // useless in this project
-        private readonly long Ino;
-        private readonly uint _Q; // useless in this project
+        readonly int Flags;             // unused in this project
+        readonly int Mode;              // unused in this project
+        readonly uint Uid;              // unused in this project
+        readonly uint Gid;              // unused in this project
+        readonly long Size;             // unused in this project
+        readonly long ATime;            // unused in this project
+        readonly long ATimeNsec;        // unused in this project
+        readonly long MTime;            // unused in this project
+        readonly long MTimeNsec;        // unused in this project
+        readonly long CTime;            // unused in this project
+        readonly long CTimeNsec;        // unused in this project
+        readonly long BirthTime;        // unused in this project
+        readonly long BirthTimeNsec;    // unused in this project
+        readonly long Dev;
+        readonly long RDev;             // unused in this project
+        readonly long Ino;
+        readonly uint UserFlags;        // unused in this project
 
         [LibraryImport("libSystem.Native", StringMarshalling = StringMarshalling.Utf8, SetLastError = true)]
         private static partial int SystemNative_Stat(string path, out Stat output);

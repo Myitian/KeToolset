@@ -23,7 +23,7 @@ static partial class HardLink
     }
     public static bool Create(string fileName, string existingFileName)
     {
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        if (OperatingSystem.IsWindows())
             return Kernel32.CreateHardLink(fileName, existingFileName);
         return LibC.CreateHardLink(fileName, existingFileName);
     }

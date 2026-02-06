@@ -46,6 +46,11 @@ sealed partial class GoogleDriveOutlinkHandler : IOutlinkHandler
                 string urlDirect = $"https://drive.usercontent.google.com/download?export=download&authuser=0&confirm=t&id={gdid}";
                 using HttpRequestMessage headReq = new(HttpMethod.Head, urlDirect);
                 using HttpResponseMessage headResp = await context.Client.SendAsync(headReq).C();
+                if (!headResp.IsSuccessStatusCode)
+                {
+                    PostContext.Log(IOutlinkHandler.MODE, $"Status code {(int)headResp.StatusCode} {headResp.StatusCode}");
+                    continue;
+                }
                 if (headResp.Content.Headers.ContentDisposition?.FileName is not null)
                 {
                     // In this API, GoogleDrive will send filename in "filename" with UTF-8 encoding, not Latin-1.
@@ -70,7 +75,8 @@ sealed partial class GoogleDriveOutlinkHandler : IOutlinkHandler
                     PostContext.Log(IOutlinkHandler.MODE, "Pass Extracted Archive File!");
                     continue;
                 }
-                if (!PostContext.SkipDownloadIfAlreadyDone(path, IOutlinkHandler.MODE))
+                if (!PostContext.SkipDownloadIfAlreadyDone(path, IOutlinkHandler.MODE, Program.SaveModeOutlink)
+                    || File.Exists($"{path}.aria2"))
                 {
                     PostContext.Log(IOutlinkHandler.MODE, "aria2c!");
                     Program.Aria2cDownload(context.PageFolderPath, fileName, urlDirect);
@@ -80,7 +86,7 @@ sealed partial class GoogleDriveOutlinkHandler : IOutlinkHandler
                     && pathNoExt is not null
                     && !Directory.Exists(pathNoExt)
                     && !File.Exists(pathNoExt)
-                    && Path.GetExtension(path).ToLowerInvariant() is ".zip" or ".rar" or ".7z" or ".gz" or ".tar" or ".r00" or ".001")
+                    && PostContext.IsArchiveExtension(Path.GetExtension(path)))
                     context.ArchiveParts.Add(pathNoExt, (path, null));
                 gDriveIDs.Add(gdid);
             }

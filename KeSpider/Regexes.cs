@@ -4,10 +4,10 @@ namespace KeSpider;
 
 static partial class Regexes
 {
-    [GeneratedRegex(@"https://(?<domain>[^/]+)/(?:api/v\d/)?(?<service>[^/]+)/user/(?<user>[^/\?#]+)")]
+    [GeneratedRegex(@"(?:https?://)?(?<domain>[^/]+)/(?:api/v\d/)?(?<service>[^/]+)/(?:user/)?(?<user>[^/\?#]+)")]
     internal static partial Regex RegMainPage();
 
-    [GeneratedRegex(@"https://(?<domain>[^/]+)/(?:api/v\d/)?(?<service>[^/]+)/user/(?<user>[^/]+)/post/(?<id>[^/\?#]+)")]
+    [GeneratedRegex(@"(?:https?://)?(?<domain>[^/]+)/(?:api/v\d/)?(?<service>[^/]+)/(?:user/)?(?<user>[^/]+)/(?:post/)?(?<id>[^/\?#]+)")]
     internal static partial Regex RegPostPage();
 
     [GeneratedRegex(@"(?<url>https?:[/\\]{2}(?:[^\x00-\x1f \x7f""<>\^`\{\|\}\.\\/\?#]+\.)+[^\x00-\x1f \x7f""<>\^`\{\|\}\.\\/\?#]+(?:[/\\\?#][^\x00-\x1f \x7f""<>\^`\{\|\}]*)*)")]

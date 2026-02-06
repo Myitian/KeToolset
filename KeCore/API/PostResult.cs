@@ -39,7 +39,7 @@ public record struct PostResult
                     .ReadFromJsonAsAsyncEnumerable(AppJsonSerializerContext.Default.PostResult).C())
                     yield return post;
                 yield break;
-            }    
+            }
             Console.WriteLine($"HTTP STATUS CODE {resp.StatusCode}");
             await Task.Delay(1000).C();
         }

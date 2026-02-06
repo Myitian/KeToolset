@@ -66,9 +66,8 @@ sealed partial class OneDriveOutlinkHandler : IOutlinkHandler, IDisposable
             PostContext.Log(IOutlinkHandler.MODE, $"Find Outlink of OneDrive: {text}");
             int index = context.OutlinkCounter++;
 
-            if (Program.SaveModeOutlink == SaveMode.Skip && File.Exists(path))
+            if (!PostContext.SkipDownloadIfAlreadyDone(path, IOutlinkHandler.MODE, Program.SaveModeOutlink))
             {
-                PostContext.Log(IOutlinkHandler.MODE, "Skipped");
                 Utils.SetTime(path, context.Datetime, context.DatetimeEdited);
                 continue;
             }
@@ -143,7 +142,7 @@ sealed partial class OneDriveOutlinkHandler : IOutlinkHandler, IDisposable
                 && pathNoExt is not null
                 && !Directory.Exists(pathNoExt)
                 && !File.Exists(pathNoExt)
-                && Path.GetExtension(path).ToLowerInvariant() is ".zip" or ".rar" or ".7z" or ".gz" or ".tar" or ".r00" or ".001")
+                && PostContext.IsArchiveExtension(Path.GetExtension(path)))
                 context.ArchiveParts.Add(pathNoExt, (path, null));
         }
     }

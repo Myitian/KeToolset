@@ -1,11 +1,14 @@
+using Microsoft.Win32.SafeHandles;
 using System.Collections.Frozen;
 using System.Globalization;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
 using System.Text;
 
 namespace KeSpider;
 
-static class Utils
+static partial class Utils
 {
     readonly static FrozenSet<char> InvalidFileNameChars = Path.GetInvalidFileNameChars().ToFrozenSet();
     internal static ConfiguredTaskAwaitable C(this Task task)
@@ -42,28 +45,8 @@ static class Utils
     public static void SaveFile(ReadOnlySpan<byte> content, string fileName, string pageFolderPath, DateTime createTime, DateTime? editTime = null, SaveMode savemode = SaveMode.Replace)
     {
         string path = Path.Combine(pageFolderPath, fileName);
-        if (File.Exists(path))
-        {
-            switch (savemode)
-            {
-                case SaveMode.Replace:
-                    break;
-                case SaveMode.Skip:
-                    return;
-                case SaveMode.KeepBoth:
-                    int i = 0;
-                    while (File.Exists(path))
-                    {
-                        path = $"{Path.GetFileNameWithoutExtension(fileName)}_({i})";
-                        string ext = Path.GetExtension(fileName);
-                        if (!string.IsNullOrEmpty(ext))
-                            path += "." + ext;
-                        path = Path.Combine(pageFolderPath, path);
-                    }
-                    break;
-
-            }
-        }
+        if (File.Exists(path) && savemode == SaveMode.Skip)
+            return;
         File.WriteAllBytes(path, content);
         SetTime(path, createTime, editTime);
     }
@@ -101,4 +84,42 @@ static class Utils
         return text[i..(j + 1)];
     }
     public static IEnumerable<T> AsEnumerable<T>(params IEnumerable<T> values) => values;
+    public static bool IsHardlink(string file)
+    {
+        if (OperatingSystem.IsWindows())
+            return BY_HANDLE_FILE_INFORMATION.IsHardlink(file);
+        return false; // The `stat` structure in Unix-like systems varies across different systems and architectures.
+    }
+    [SupportedOSPlatform("windows")]
+    [StructLayout(LayoutKind.Sequential)]
+    private readonly partial struct BY_HANDLE_FILE_INFORMATION
+    {
+        readonly uint FileAttributes;       // unused in this project
+        readonly uint CreationTimeLow;      // unused in this project
+        readonly uint CreationTimeHigh;     // unused in this project
+        readonly uint LastAccessTimeLow;    // unused in this project
+        readonly uint LastAccessTimeHigh;   // unused in this project
+        readonly uint LastWriteTimeLow;     // unused in this project
+        readonly uint LastWriteTimeHigh;    // unused in this project
+        readonly uint VolumeSerialNumber;   // unused in this project
+        readonly uint FileSizeHigh;         // unused in this project
+        readonly uint FileSizeLow;          // unused in this project
+        readonly uint NumberOfLinks;
+        readonly uint FileIndexHigh;        // unused in this project
+        readonly uint FileIndexLow;         // unused in this project
+
+        [LibraryImport("kernel32", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static partial bool GetFileInformationByHandle(
+            SafeFileHandle hFile,
+            out BY_HANDLE_FILE_INFORMATION lpFileInformation);
+        internal static bool IsHardlink(string file)
+        {
+            if (File.Exists(file))
+                using (FileStream fs = File.Open(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                    if (GetFileInformationByHandle(fs.SafeFileHandle, out BY_HANDLE_FILE_INFORMATION info))
+                        return info.NumberOfLinks > 1;
+            return false;
+        }
+    }
 }

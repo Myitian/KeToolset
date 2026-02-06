@@ -10,9 +10,10 @@
     <OutputType>Exe</OutputType>
     <RollForward>LatestMajor</RollForward>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <Version>1.2</Version>
+    <Version>1.3</Version>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="Myitian.SimpleArgs" Version="*" />
     <PackageReference Include="UTF.Unknown" Version="*" />
   </ItemGroup>
   <ItemGroup>
