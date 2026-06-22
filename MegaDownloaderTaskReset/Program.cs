@@ -23,23 +23,12 @@ static class Program
     {
         RegisterCommand(static (ref updateNotSave, ref xml, args) =>
         {
-            if (updateNotSave)
-            {
-                Console.WriteLine("有未保存的修改！是否保存？");
-                if (ReadBoolean())
-                    WriteXML(xmlPath, xml);
-            }
-            Console.WriteLine("是否确认退出？");
-            return ReadBoolean();
-        }, "quit", "q", "exit");
-        RegisterCommand(static (ref updateNotSave, ref xml, args) =>
-        {
             WriteLine(Console.Out,
                 $"""
                  {WhiteFG}帮助：{Reset}
                  命令      | 参数     | 别名             | 说明
-                 quit      : 无       : q, exit          : 退出
                  help      : 无       : h, ?             : 帮助
+                 quit      : 无       : q, exit          : 退出
                  version   : 无       : v, ver           : 版本
                  dedup     : 检测方式 : dd               : 尝试文件去重
                  find      : 查询内容 : f, query, search : 查询
@@ -58,9 +47,20 @@ static class Program
         }, "help", "h", "?");
         RegisterCommand(static (ref updateNotSave, ref xml, args) =>
         {
-            AssemblyName name = Assembly.GetExecutingAssembly().GetName();
+            if (updateNotSave)
+            {
+                Console.WriteLine("有未保存的修改！是否保存？");
+                if (ReadBoolean())
+                    WriteXML(xmlPath, xml);
+            }
+            Console.WriteLine("是否确认退出？");
+            return ReadBoolean();
+        }, "quit", "q", "exit");
+        RegisterCommand(static (ref updateNotSave, ref xml, args) =>
+        {
+            AssemblyName assembly = Assembly.GetExecutingAssembly().GetName();
             WriteLine(Console.Out,
-                $"{WhiteFG}{name.Name} {CyanFG}v{name.Version}{Reset}");
+                $"{WhiteFG}{assembly.Name} {CyanFG}v{assembly.Version}{Reset}");
             return false;
         }, "version", "v", "ver");
         RegisterCommand(static (ref updateNotSave, ref xml, args) =>
@@ -533,6 +533,124 @@ static class Program
         }, "priority", "p");
         RegisterCommand(static (ref updateNotSave, ref xml, args) =>
         {
+            Console.WriteLine("请输入要重置项目的URL或完整路径，以空行结束：");
+            HashSet<string> items = [];
+            HashSet<string>.AlternateLookup<ReadOnlySpan<char>> lookup = items.GetAlternateLookup<ReadOnlySpan<char>>();
+            while (Console.ReadLine().AsSpan().Trim() is { IsEmpty: false } line)
+                lookup.Add(line);
+            WriteLine(Console.Out,
+                $"""
+                            {Reset}请输入重置级别：
+                            {Reset}[{CyanFG}0{DarkGrayFG}：{WhiteFG}仅重置状态{Reset}]
+                            {Reset}[{CyanFG}1{DarkGrayFG}：{WhiteFG}重置状态和进度{Reset}]
+                            {Reset}[{CyanFG}2{DarkGrayFG}：{WhiteFG}重置状态和进度，并移动文件到回收站{Reset}]
+                            {Reset}[{CyanFG}3{DarkGrayFG}：{WhiteFG}重置状态和进度，并删除文件{Reset}]
+                            """);
+            long mode = ReadNumber(0, 3);
+            bool changed = false;
+            foreach (XmlNode package in xml.ChildNodes)
+            {
+                if (package["ListaFicheros"] is not XmlNode files)
+                    continue;
+                foreach (XmlNode file in files.ChildNodes)
+                {
+                    if (!file.HasAttribute(v2))
+                    {
+                        Console.WriteLine("仅支持v2文件信息");
+                        continue;
+                    }
+                    if (file["URL"] is not XmlNode urlNode)
+                        continue;
+                    string url = DecryptString(urlNode.Value);
+
+                    static string? GetPath(XmlNode file)
+                    {
+                        if (file["RutaLocal"] is not XmlNode localPath || file["NombreFichero"] is not XmlNode fileName)
+                            return null;
+                        return Path.Combine(localPath.Value, fileName.Value);
+                    }
+
+                    string? filePath = GetPath(file);
+                    if (items.Contains(url) || lookup.Contains(filePath))
+                    {
+                        WriteLine(Console.Out,
+                            $"URL {GreenFG}{url}{Reset}");
+                        if (file["RutaRelativa"] is XmlNode relativePath && file["NombreFichero"] is XmlNode fileName)
+                        {
+                            WriteLine(Console.Out,
+                                $"文件 {DarkYellowFG}\"{YellowFG}{Path.Combine(relativePath.Value, fileName.Value)}{DarkYellowFG}\"{Reset}");
+                        }
+                        changed = true;
+                        switch (mode)
+                        {
+                            case 3 when filePath is not null:
+                                WriteLine(Console.Out,
+                                    $"  * 删除{DarkYellowFG}\"{YellowFG}{filePath}{DarkYellowFG}\"{Reset}");
+                                if (File.Exists(filePath))
+                                    File.Delete(filePath);
+                                goto case 1;
+                            case 2 when filePath is not null:
+                                WriteLine(Console.Out,
+                                    $"  * 将{DarkYellowFG}\"{YellowFG}{filePath}{DarkYellowFG}\"{Reset}移动到回收站");
+                                if (File.Exists(filePath))
+                                    FileSystem.DeleteFile(filePath, UIOption.OnlyErrorDialogs, RecycleOption.SendToRecycleBin);
+                                goto case 1;
+                            case 3:
+                            case 2:
+                            case 1:
+                                if (file["BytesDescargados"] is XmlNode bytesDownloaded)
+                                {
+                                    WriteLine(Console.Out,
+                                        $"  * BytesDescargados{DarkGrayFG}: {CyanFG}{bytesDownloaded.Value}{Reset} -> {CyanFG}0{Reset}");
+                                    bytesDownloaded.SetValue("0");
+                                }
+                                if (file["Porcentaje"] is XmlNode percent)
+                                {
+                                    WriteLine(Console.Out,
+                                        $"  * Porcentaje{DarkGrayFG}: {CyanFG}{percent.Value}{Reset} -> {CyanFG}0{Reset}");
+                                    percent.SetValue("0");
+                                }
+                                if (file["DatosPartes"] is XmlNode dataParts)
+                                {
+                                    if (dataParts["AllFinished"] is XmlNode allFinished)
+                                    {
+                                        WriteLine(Console.Out,
+                                            $"  * AllFinished{DarkGrayFG}: {BlueFG}{allFinished.Value}{Reset} -> {BlueFG}False{Reset}");
+                                        allFinished.SetValue("False");
+                                    }
+                                    if (dataParts["ChunkList"] is XmlNode chunkList)
+                                    {
+                                        foreach (XmlNode chunk in chunkList.ChildNodes)
+                                        {
+                                            chunk["Index"]?.SetValue("0");
+                                            chunk["Available"]?.SetValue("True");
+                                        }
+                                        WriteLine(Console.Out,
+                                            $"  * 重置{CyanFG}{chunkList.ChildCount}{Reset}个区块");
+                                    }
+                                }
+                                goto case 0;
+                            case 0:
+                                if (file["EstadoDescarga"] is XmlNode downloadStatus)
+                                {
+                                    WriteLine(Console.Out,
+                                        $"  * EstadoDescarga{DarkGrayFG}: {BlueFG}{downloadStatus.Value}{Reset} -> {BlueFG}False{Reset}");
+                                    downloadStatus.SetValue("EnCola");
+                                }
+                                break;
+                        }
+                    }
+                }
+            }
+            if (changed)
+            {
+                updateNotSave = true;
+                Console.WriteLine("XML已修改，记得保存！");
+            }
+            return false;
+        }, "reset", "rst");
+        RegisterCommand(static (ref updateNotSave, ref xml, args) =>
+        {
             WriteXML(xmlPath, xml);
             updateNotSave = false;
             Console.WriteLine("保存成功！");
@@ -706,114 +824,6 @@ static class Program
             Console.WriteLine("排序完成！");
             return false;
         }, "sort-pkg", "sp");
-        RegisterCommand(static (ref updateNotSave, ref xml, args) =>
-        {
-            Console.WriteLine("请输入要重置项目的URL，以空行结束：");
-            HashSet<string> urls = [];
-            string? line;
-            while (!string.IsNullOrEmpty(line = Console.ReadLine()))
-                urls.Add(line.Trim());
-            WriteLine(Console.Out,
-                $"""
-                            {Reset}请输入重置级别：
-                            {Reset}[{CyanFG}0{DarkGrayFG}：{WhiteFG}仅重置状态{Reset}]
-                            {Reset}[{CyanFG}1{DarkGrayFG}：{WhiteFG}重置状态和进度{Reset}]
-                            {Reset}[{CyanFG}2{DarkGrayFG}：{WhiteFG}重置状态和进度，并移动文件到回收站{Reset}]
-                            {Reset}[{CyanFG}3{DarkGrayFG}：{WhiteFG}重置状态和进度，并删除文件{Reset}]
-                            """);
-            long mode = ReadNumber(0, 3);
-            bool changed = false;
-            foreach (XmlNode package in xml.ChildNodes)
-            {
-                if (package["ListaFicheros"] is not XmlNode files)
-                    continue;
-                foreach (XmlNode file in files.ChildNodes)
-                {
-                    if (!file.HasAttribute(v2))
-                    {
-                        Console.WriteLine("仅支持v2文件信息");
-                        continue;
-                    }
-                    if (file["URL"] is not XmlNode urlNode)
-                        continue;
-                    string url = DecryptString(urlNode.Value);
-                    if (urls.Contains(url))
-                    {
-                        Console.WriteLine($"URL {GreenFG}{url}{Reset}");
-                        if (file["RutaRelativa"] is not XmlNode relativePath || file["NombreFichero"] is not XmlNode fileName)
-                            continue;
-                        Console.WriteLine($"文件 {DarkYellowFG}\"{YellowFG}{Path.Combine(relativePath.Value, fileName.Value)}{DarkYellowFG}\"{Reset}");
-                        changed = true;
-                        switch (mode)
-                        {
-                            case 3 when file["RutaLocal"] is XmlNode localPath:
-                                string filePath1 = Path.Combine(localPath.Value, fileName.Value);
-                                WriteLine(Console.Out,
-                                    $"  * 删除{DarkYellowFG}\"{YellowFG}{filePath1}{DarkYellowFG}\"{Reset}");
-                                if (File.Exists(filePath1))
-                                    File.Delete(filePath1);
-                                goto case 1;
-                            case 2 when file["RutaLocal"] is XmlNode localPath:
-                                string filePath2 = Path.Combine(localPath.Value, fileName.Value);
-                                WriteLine(Console.Out,
-                                    $"  * 将{DarkYellowFG}\"{YellowFG}{filePath2}{DarkYellowFG}\"{Reset}移动到回收站");
-                                if (File.Exists(filePath2))
-                                    FileSystem.DeleteFile(filePath2, UIOption.OnlyErrorDialogs, RecycleOption.SendToRecycleBin);
-                                goto case 1;
-                            case 3:
-                            case 2:
-                            case 1:
-                                if (file["BytesDescargados"] is XmlNode bytesDownloaded)
-                                {
-                                    WriteLine(Console.Out,
-                                        $"  * BytesDescargados{DarkGrayFG}: {CyanFG}{bytesDownloaded.Value}{Reset} -> {CyanFG}0{Reset}");
-                                    bytesDownloaded.SetValue("0");
-                                }
-                                if (file["Porcentaje"] is XmlNode percent)
-                                {
-                                    WriteLine(Console.Out,
-                                        $"  * Porcentaje{DarkGrayFG}: {CyanFG}{percent.Value}{Reset} -> {CyanFG}0{Reset}");
-                                    percent.SetValue("0");
-                                }
-                                if (file["DatosPartes"] is XmlNode dataParts)
-                                {
-                                    if (dataParts["AllFinished"] is XmlNode allFinished)
-                                    {
-                                        WriteLine(Console.Out,
-                                            $"  * AllFinished{DarkGrayFG}: {BlueFG}{allFinished.Value}{Reset} -> {BlueFG}False{Reset}");
-                                        allFinished.SetValue("False");
-                                    }
-                                    if (dataParts["ChunkList"] is XmlNode chunkList)
-                                    {
-                                        foreach (XmlNode chunk in chunkList.ChildNodes)
-                                        {
-                                            chunk["Index"]?.SetValue("0");
-                                            chunk["Available"]?.SetValue("True");
-                                        }
-                                        WriteLine(Console.Out,
-                                            $"  * 重置{CyanFG}{chunkList.ChildCount}{Reset}个区块");
-                                    }
-                                }
-                                goto case 0;
-                            case 0:
-                                if (file["EstadoDescarga"] is XmlNode downloadStatus)
-                                {
-                                    WriteLine(Console.Out,
-                                        $"  * EstadoDescarga{DarkGrayFG}: {BlueFG}{downloadStatus.Value}{Reset} -> {BlueFG}False{Reset}");
-                                    downloadStatus.SetValue("EnCola");
-                                }
-                                break;
-                        }
-                    }
-                }
-            }
-            if (changed)
-            {
-                updateNotSave = true;
-                Console.WriteLine("XML已修改，记得保存！");
-            }
-            return false;
-        }, "reset", "rst");
     }
     static void RegisterCommand(CommandHandler command, params ReadOnlySpan<string> names)
     {

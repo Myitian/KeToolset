@@ -1,4 +1,5 @@
 ﻿using System.Buffers.Binary;
+using System.Data;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
@@ -13,6 +14,13 @@ namespace MegaDownloaderXmlGenerator;
 static partial class Program
 {
     static readonly KeyValuePair<string, string> v2 = new("v", "2");
+    static readonly EnumerationOptions options = new()
+    {
+        MatchType = MatchType.Simple,
+        MatchCasing = MatchCasing.CaseInsensitive,
+        RecurseSubdirectories = true,
+        IgnoreInaccessible = true
+    };
 
     [GeneratedRegex(@"https?://mega(?:\.co)?\.nz/[^#]+#[a-zA-Z0-9\-_]+")]
     private static partial Regex RegMega();
@@ -63,52 +71,8 @@ static partial class Program
             }
             return 1;
         }
-        EnumerationOptions options = new()
-        {
-            MatchType = MatchType.Simple,
-            MatchCasing = MatchCasing.CaseInsensitive,
-            RecurseSubdirectories = true,
-            IgnoreInaccessible = true
-        };
-        Regex regMega = RegMega();
         Dictionary<string, List<XmlNode>> folders = [];
-        foreach ((string directory, string url) in directories
-            .Where(Directory.Exists)
-            .SelectMany(it => Directory.EnumerateFiles(it, "*.placeholder.txt", options))
-            .Distinct()
-            .Select(it => (Path.GetDirectoryName(it) ?? "", regMega.Match(File.ReadAllText(it))))
-            .Where(it => it.Item2.Success)
-            .Select(it => (it.Item1, it.Item2.Value)))
-        {
-            Console.Error.WriteLine($"Loading {url}...");
-            if (!MegaUtils.ExtractIdKey(url.AsMemory(), out ReadOnlyMemory<char> id, out ReadOnlyMemory<char> key))
-                Console.Error.WriteLine("Warning: Invalid URL");
-            else
-            {
-                if (!folders.TryGetValue(directory, out List<XmlNode>? files))
-                    folders[directory] = files = [];
-                if (!url.Contains("/folder/"))
-                    files.Add(CreateFileNode(id.Span, key.Span, directory, url));
-                else
-                {
-                    try
-                    {
-                        foreach ((string fileUrl, string filePath) in await MegaUtils.ResolveFolderAsync(id, key).C())
-                        {
-                            Console.Error.WriteLine($"Loading {fileUrl}...");
-                            if (!MegaUtils.ExtractIdKey(fileUrl.AsMemory(), out id, out key))
-                                continue;
-                            files.Add(CreateFileNode(id.Span, key.Span, directory, fileUrl, Path.GetDirectoryName(filePath)));
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.Error.WriteLine(ex.Message);
-                    }
-                }
-            }
-            Console.Error.Flush();
-        }
+        await ProcessAnyTxt(directories, folders).ConfigureAwait(false);
         XmlNode root = new("ListaPaquetes");
         foreach ((string folder, List<XmlNode> files) in folders)
         {
@@ -132,18 +96,82 @@ static partial class Program
             Done!
             """);
         return 0;
-
-        static XmlNode CreateFileNode(ReadOnlySpan<char> id, ReadOnlySpan<char> key, string directory, string url, string? path = null)
+    }
+    static XmlNode CreateFileNode(ReadOnlySpan<char> id, ReadOnlySpan<char> key, string directory, string url, string? path = null)
+    {
+        path ??= "";
+        return new XmlNode("Fichero")
+            .AppendAttribute(v2)
+            .AppendChild(new XmlNode("FileID").SetValue(EncryptString(id)))
+            .AppendChild(new XmlNode("FileKey").SetValue(EncryptString(key)))
+            .AppendChild(new XmlNode("URL").SetValue(EncryptString(url)))
+            .AppendChild(new XmlNode("NombreFichero").SetValue(url))
+            .AppendChild(new XmlNode("RutaLocal").SetValue(Path.Combine(directory, path)))
+            .AppendChild(new XmlNode("RutaRelativa").SetValue(path));
+    }
+    static async Task AddUrl(Dictionary<string, List<XmlNode>> folders, string directory, string url)
+    {
+        Console.Error.WriteLine($"Loading {url}...");
+        if (!MegaUtils.ExtractIdKey(url.AsMemory(), out ReadOnlyMemory<char> id, out ReadOnlyMemory<char> key))
+            Console.Error.WriteLine("Warning: Invalid URL");
+        else
         {
-            path ??= "";
-            return new XmlNode("Fichero")
-                .AppendAttribute(v2)
-                .AppendChild(new XmlNode("FileID").SetValue(EncryptString(id)))
-                .AppendChild(new XmlNode("FileKey").SetValue(EncryptString(key)))
-                .AppendChild(new XmlNode("URL").SetValue(EncryptString(url)))
-                .AppendChild(new XmlNode("NombreFichero").SetValue(url))
-                .AppendChild(new XmlNode("RutaLocal").SetValue(Path.Combine(directory, path)))
-                .AppendChild(new XmlNode("RutaRelativa").SetValue(path));
+            if (!folders.TryGetValue(directory, out List<XmlNode>? files))
+                folders[directory] = files = [];
+            if (!url.Contains("/folder/"))
+                files.Add(CreateFileNode(id.Span, key.Span, directory, url));
+            else
+            {
+                try
+                {
+                    foreach ((string fileUrl, string filePath) in await MegaUtils.ResolveFolderAsync(id, key).C())
+                    {
+                        Console.Error.WriteLine($"Loading {fileUrl}...");
+                        if (!MegaUtils.ExtractIdKey(fileUrl.AsMemory(), out id, out key))
+                            continue;
+                        files.Add(CreateFileNode(id.Span, key.Span, directory, fileUrl, Path.GetDirectoryName(filePath)));
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine(ex.Message);
+                }
+            }
+        }
+        Console.Error.Flush();
+    }
+    static async Task ProcessPlaceholders(IList<string> directories, Dictionary<string, List<XmlNode>> folders)
+    {
+        Regex regMega = RegMega();
+        foreach ((string directory, string url) in directories
+            .Where(Directory.Exists)
+            .SelectMany(it => Directory.EnumerateFiles(it, "*.placeholder.txt", options))
+            .Distinct()
+            .Select(it => (Path.GetDirectoryName(it) ?? "", regMega.Match(File.ReadAllText(it))))
+            .Where(it => it.Item2.Success)
+            .Select(it => (it.Item1, it.Item2.Value)))
+        {
+            await AddUrl(folders, directory, url).ConfigureAwait(false);
+        }
+    }
+
+    static async Task ProcessAnyTxt(IList<string> directories, Dictionary<string, List<XmlNode>> folders)
+    {
+        Regex regMega = RegMega();
+        foreach (string directory in directories
+            .Where(Directory.Exists)
+            .SelectMany(Directory.EnumerateDirectories)
+            .Distinct())
+        {
+            foreach (string url in Directory
+                .EnumerateFiles(directory, "*.txt", options)
+                .Select(File.ReadAllText)
+                .SelectMany((Func<string, MatchCollection>)regMega.Matches)
+                .Select(it => it.Value)
+                .Distinct())
+            {
+                await AddUrl(folders, directory, url).ConfigureAwait(false);
+            }
         }
     }
     public static string EncryptString(ReadOnlySpan<char> data)

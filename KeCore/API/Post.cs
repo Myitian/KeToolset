@@ -33,6 +33,12 @@ public record struct Embed
 
 public record struct Post
 {
+    [JsonPropertyName("id")]
+    public string ID { get; set; }
+
+    [JsonPropertyName("has_full")]
+    public bool HasFull { get; set; }
+
     [JsonPropertyName("title")]
     public string Title { get; set; }
 
@@ -53,6 +59,30 @@ public record struct Post
 
     [JsonPropertyName("attachments")]
     public ImmutableArray<Attachment> Attachments { get; set; }
+
+    public static async Task<(byte[], Post)> Request(HttpClient client, string domain, string service, string user, string post)
+    {
+        ArgumentNullException.ThrowIfNull(client);
+        Uri url = new UriBuilder()
+        {
+            Scheme = "https",
+            Host = domain,
+            Path = $"/api/v1/{service}/user/{user}/post/{post}"
+        }.Uri;
+        while (true)
+        {
+            Console.WriteLine($"GET {url}");
+            using HttpResponseMessage resp = await client.GetAsync(url, HttpCompletionOption.ResponseContentRead).C();
+            if (resp.IsSuccessStatusCode)
+            {
+                return (
+                    await resp.Content.ReadAsByteArrayAsync().C(),
+                    await resp.Content.ReadFromJsonAsync(AppJsonSerializerContext.Default.Post).C());
+            }
+            Console.WriteLine($"HTTP STATUS CODE {resp.StatusCode}");
+            await Task.Delay(1000).C();
+        }
+    }
 }
 
 public class PostRoot

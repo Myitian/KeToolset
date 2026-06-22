@@ -1,6 +1,7 @@
 ﻿using System.Buffers.Text;
 using System.Collections.Immutable;
 using System.Diagnostics;
+using System.Drawing;
 using System.Net.Http.Json;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -73,20 +74,29 @@ static class MegaUtils
             {
                 if (item.T is not (EntryType.File or EntryType.Folder)
                     || item.H is not string h
-                    || item.K is not string k
-                    || k.IndexOf(':') is not (>= 0 and int colon))
+                    || item.K is not string k)
                     continue;
-                byte[] eData = Base64Url.DecodeFromChars(k.AsSpan(colon + 1));
-                byte[] dData = aes.DecryptEcb(eData, PaddingMode.Zeros);
-                Span<Int128> i128view = MemoryMarshal.Cast<byte, Int128>(dData.AsSpan());
-                Int128 key = i128view.Length switch
+                ReadOnlySpan<char> kSpan = k.AsSpan();
+                EntryName name = default;
+                byte[]? dData = null;
+                foreach (Range range in kSpan.Split('/'))
                 {
-                    0 => 0, // should not happen!
-                    1 => i128view[0], // folder key
-                    _ => i128view[0] ^ i128view[1], // file key
-                };
-                string text = DecryptEntryInfo(item.A, MemoryMarshal.AsBytes(new ReadOnlySpan<Int128>(in key)));
-                EntryName name = JsonSerializer.Deserialize(text.AsSpan(4), AppJsonSerializerContext.Default.EntryName);
+                    ReadOnlySpan<char> kSubSpan = kSpan[range];
+                    if (kSubSpan.IndexOf(':') is >= 0 and int colon)
+                    {
+                        try
+                        {
+                            (dData, string text) = Decrypt(aes, item, kSubSpan[(colon + 1)..]);
+                            name = JsonSerializer.Deserialize(text.AsSpan(4), AppJsonSerializerContext.Default.EntryName);
+                        }
+                        catch
+                        {
+                            continue;
+                        }
+                    }
+                }
+                if (dData is null)
+                    throw new Exception("Unable to decrypt");
                 fileLinkList[h] = (name.N ?? "", item.P);
                 if (item.T is EntryType.File)
                     result.Add(($"http://mega.co.nz/#N!{h}!{Base64Url.EncodeToString(dData)}=###n={folderId}", h));
@@ -100,6 +110,21 @@ static class MegaUtils
             result[i] = (url, path);
         }
         return result;
+
+        static (byte[], string) Decrypt(Aes aes, EntryMetadata item, ReadOnlySpan<char> kSpan)
+        {
+            byte[] eData = Base64Url.DecodeFromChars(kSpan);
+            byte[] dData = aes.DecryptEcb(eData, PaddingMode.Zeros);
+            Span<Int128> i128view = MemoryMarshal.Cast<byte, Int128>(dData.AsSpan());
+            Int128 key = i128view.Length switch
+            {
+                0 => 0, // should not happen!
+                1 => i128view[0], // folder key
+                _ => i128view[0] ^ i128view[1], // file key
+            };
+            string text = DecryptEntryInfo(item.A, MemoryMarshal.AsBytes(new ReadOnlySpan<Int128>(in key)));
+            return (dData, text);
+        }
     }
     private static string DecryptEntryInfo(ReadOnlySpan<char> cipertext, ReadOnlySpan<byte> key)
     {

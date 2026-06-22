@@ -12,17 +12,19 @@ namespace KeSpider;
 
 sealed class PostContext(
     HttpClient client,
-    Encoding? encoding,
+    Encoding? defaultEncoding,
+    string? defaultPassword,
     Dictionary<Array256bit, string> downloadCache,
-    PostRoot post,
+    Post post,
     DateTime datetime,
     DateTime datetimeEdited,
     string pageFolderPath)
 {
     public HttpClient Client { get; } = client;
-    public Encoding? Encoding { get; } = encoding;
+    public Encoding? DefaultPEncoding { get; } = defaultEncoding;
+    public string? DefaultPassword { get; } = defaultPassword;
     public Dictionary<Array256bit, string> DownloadCache { get; } = downloadCache;
-    public PostRoot Post { get; } = post;
+    public Post Post { get; } = post;
     public DateTime Datetime { get; } = datetime;
     public DateTime DatetimeEdited { get; } = datetimeEdited;
     public string PageFolderPath { get; } = pageFolderPath;
@@ -93,24 +95,39 @@ sealed class PostContext(
         [NotNullIfNotNull(nameof(pathNoExt))] out string? fileNameNoExt,
         [NotNullIfNotNull(nameof(fileNameNoExt))] out string? pathNoExt,
         ReadOnlySpan<char> mode,
-        ReadOnlySpan<char> seqPrefix)
+        ReadOnlySpan<char> seqPrefix,
+        ReadOnlySpan<char> directName = default)
     {
         string unprefixedName = Program.FixSpecialExt(Utils.ReplaceInvalidFileNameChars(name));
-        string prefixedName = $"{seqPrefix}{index:D3}_{unprefixedName}";
+
+        string newBasePrefix = $"{index:D3}_";
+        string oldBasePrefix = $"{index}_";
+        string newPrefix = $"{seqPrefix}{newBasePrefix}";
+        string altPrefix = $"{seqPrefix}{oldBasePrefix}";
+
+        string prefixedName = $"{newPrefix}{unprefixedName}";
         int extLen = Program.ProcessArchiveName(unprefixedName);
-        string finalName = fileName = extLen == 0 ? prefixedName : unprefixedName;
-        path = Path.Combine(PageFolderPath, finalName);
+        fileName = extLen == 0 ? prefixedName : unprefixedName;
+        path = Path.Combine(PageFolderPath, fileName);
         string ext = Path.GetExtension(unprefixedName);
         bool first = !File.Exists(path);
-        Log(mode, $"Save as {finalName}");
-        foreach (string oldName in Directory.EnumerateFiles(PageFolderPath, $"{seqPrefix}{index}_*", Program.simpleNonRecursiveEnumeration)
-                           .Concat(Directory.EnumerateFiles(PageFolderPath, $"{seqPrefix}{index:D3}_*", Program.simpleNonRecursiveEnumeration))
-                           .Concat(Directory.EnumerateFiles(PageFolderPath, $"{index}_*{ext}", Program.simpleNonRecursiveEnumeration))
-                           .Concat(Directory.EnumerateFiles(PageFolderPath, $"{index:D3}_*{ext}", Program.simpleNonRecursiveEnumeration))
-                           .Concat(Directory.EnumerateFiles(PageFolderPath, unprefixedName, Program.simpleNonRecursiveEnumeration))
-                           .Where(it => !Path.GetFileName(it.AsSpan()).Equals(finalName, StringComparison.Ordinal))
-                           .Where(it => !it.AsSpan().EndsWith(".aria2", StringComparison.OrdinalIgnoreCase)))
+        Log(mode, $"Save as {fileName}");
+        foreach (string oldName in Directory.EnumerateFiles(PageFolderPath, "*", Program.simpleNonRecursiveEnumeration))
         {
+            ReadOnlySpan<char> oldFullNameSpan = oldName;
+            ReadOnlySpan<char> oldFileNameSpan = Path.GetFileName(oldFullNameSpan);
+            if (oldFullNameSpan.EndsWith(".aria2", StringComparison.OrdinalIgnoreCase)
+                || oldFileNameSpan.Equals(fileName, StringComparison.Ordinal))
+                continue;
+            if (directName.IsEmpty || !oldFileNameSpan.StartsWith(directName, StringComparison.OrdinalIgnoreCase))
+            {
+                if (!(oldFileNameSpan.Equals(unprefixedName, StringComparison.OrdinalIgnoreCase)
+                    || oldFileNameSpan.StartsWith(newPrefix, StringComparison.OrdinalIgnoreCase)
+                    || oldFileNameSpan.StartsWith(altPrefix, StringComparison.OrdinalIgnoreCase)
+                    || oldFileNameSpan.StartsAndEndsWith(newBasePrefix, ext, StringComparison.OrdinalIgnoreCase)
+                    || oldFileNameSpan.StartsAndEndsWith(oldBasePrefix, ext, StringComparison.OrdinalIgnoreCase)))
+                    continue;
+            }
             if (first)
             {
                 first = false;
@@ -157,12 +174,12 @@ sealed class PostContext(
                                     Log(MODE, $"Result: {(u = detected.Encoding).EncodingName}");
                                     break;
                                 default:
-                                    if (Encoding is null)
+                                    if (DefaultPEncoding is null)
                                     {
                                         Log(MODE, "zip! No suitable encoding, fallback to 7z");
                                         goto DEFAULT;
                                     }
-                                    Log(MODE, $"zip! OverridenBy: {(u = Encoding).EncodingName}");
+                                    Log(MODE, $"zip! OverridenBy: {(u = DefaultPEncoding).EncodingName}");
                                     break;
                             }
                             ZipFile.ExtractToDirectory(path, p1, u, true);
@@ -171,11 +188,16 @@ sealed class PostContext(
                         catch (Exception ex)
                         {
                             Log(MODE, $"Exception: {ex.Message}");
+                            pwd = DefaultPassword;
                             goto default;
                         }
                     case "":
-                        Log(MODE, "Need password!");
-                        pwd = Console.ReadLine();
+                        pwd = DefaultPassword;
+                        if (pwd is null)
+                        {
+                            Log(MODE, "Need password!");
+                            pwd = Console.ReadLine();
+                        }
                         goto default;
                     default:
                     DEFAULT:
@@ -211,10 +233,26 @@ sealed class PostContext(
             Utils.SaveFile(content, "content.html", PageFolderPath, Datetime, DatetimeEdited, Program.SaveModeContent);
         }
     }
+    public void DownloadComment(byte[] content)
+    {
+        const string MODE = "COMMENT";
+        Log(MODE, "Save Comments");
+
+        string path = Path.Combine(PageFolderPath, "comments.json");
+        if (Program.SaveModeContent == SaveMode.Skip && File.Exists(path))
+        {
+            Log(MODE, "Skipped");
+            Utils.SetTime(path, Datetime, DatetimeEdited);
+        }
+        else
+        {
+            Utils.SaveFile(content, "comments.json", PageFolderPath, Datetime, DatetimeEdited, Program.SaveModeContent);
+        }
+    }
     public async Task DownloadFile(string domain)
     {
         const string MODE = "FILE";
-        if (Post?.Attachments.IsDefaultOrEmpty is not false)
+        if (Post.Attachments.IsDefaultOrEmpty is not false)
             return;
         int j = FileCounter;
         foreach (Attachment file in Post.Attachments)
@@ -222,10 +260,11 @@ sealed class PostContext(
             try
             {
                 int index = FileCounter++;
-                string fileUrl = $"{file.Server}/data{file.Path}";
+                string fileUrl = $"{file.Server ?? "https://file.pawchive.st/"}/data{file.Path}";
                 Log(MODE, $"{++j} of {Post.Attachments.Length} - Download File {fileUrl}");
                 ReadOnlySpan<char> name = string.IsNullOrEmpty(file.Name) || file.Name.StartsWith("https://www.patreon.com/media-u/", StringComparison.Ordinal)
                     ? Path.GetFileName((ReadOnlySpan<char>)file.Path) : file.Name;
+                ReadOnlySpan<char> sha256text = file.Path.AsSpan(7, 64);
                 if (PrepareDownload(
                     name,
                     index,
@@ -234,13 +273,14 @@ sealed class PostContext(
                     out string? fileNameNoExt,
                     out string? pathNoExt,
                     MODE,
-                    "f"))
+                    "f",
+                    sha256text))
                 {
                     Log(MODE, "Pass Extracted Archive File!");
                     continue;
                 }
                 Array256bit sha256 = new();
-                Convert.FromHexString(file.Path.AsSpan(7, 64), sha256, out _, out _);
+                Convert.FromHexString(sha256text, sha256, out _, out _);
                 if (!SkipDownloadIfAlreadyDone(path, in sha256, MODE))
                 {
                     Log(MODE, "aria2c!");
@@ -267,42 +307,47 @@ sealed class PostContext(
     public void DownloadPicture()
     {
         const string MODE = "PICTURE";
-        if (Post?.Previews.IsDefaultOrEmpty is not false)
+        Attachment picture = Post.File;
+        if (string.IsNullOrEmpty(picture.Path))
             return;
-        int localCounter = 0;
-        foreach (Attachment picture in Post.Previews)
+        try
         {
-            if (string.IsNullOrEmpty(picture.Path) || string.IsNullOrEmpty(picture.Server))
-                continue;
-            try
+            picture.Server ??= "https://file.pawchive.st/";
+            int index = PictureCounter++;
+            string fileUrl = $"{picture.Server}/data{picture.Path}";
+            Log(MODE, $"Download Picture {fileUrl}");
+            ReadOnlySpan<char> name = string.IsNullOrEmpty(picture.Name)
+                || picture.Name.StartsWith("https://www.patreon.com/media-u/", StringComparison.Ordinal) // workaround for some strange names
+                ? Path.GetFileName(picture.Path.AsSpan()) : picture.Name;
+            ReadOnlySpan<char> sha256text = picture.Path.AsSpan(7, 64);
+            if (PrepareDownload(
+                name,
+                index,
+                out string fileName,
+                out string path,
+                out _,
+                out _,
+                MODE,
+                "p",
+                sha256text))
             {
-                int index = PictureCounter++;
-                string fileUrl = $"{picture.Server}/data{picture.Path}";
-                Log(MODE, $"{++localCounter} of {Post.Previews.Length} - Download Picture {fileUrl}");
-                ReadOnlySpan<char> name = string.IsNullOrEmpty(picture.Name)
-                    || picture.Name.StartsWith("https://www.patreon.com/media-u/", StringComparison.Ordinal) // workaround for some strange names
-                    ? Path.GetFileName(picture.Path.AsSpan()) : picture.Name;
-                if (PrepareDownload(name, index, out string fileName, out string path, out _, out _, MODE, "p"))
-                {
-                    Log(MODE, "Unexpected archive in picture mode");
-                    continue;
-                }
-                Array256bit sha256 = new();
-                Convert.FromHexString(picture.Path.AsSpan(7, 64), sha256, out _, out _);
-                if (!SkipDownloadIfAlreadyDone(path, in sha256, MODE))
-                {
-                    Log(MODE, "aria2c!");
-                    Program.Aria2cDownload(PageFolderPath, fileName, fileUrl);
-                }
-                DownloadCache[sha256] = path;
-                Utils.SetTime(path, Datetime, DatetimeEdited);
+                Log(MODE, "Unexpected archive in picture mode");
+                return;
             }
-            catch (Exception ex)
+            Array256bit sha256 = new();
+            Convert.FromHexString(sha256text, sha256, out _, out _);
+            if (!SkipDownloadIfAlreadyDone(path, in sha256, MODE))
             {
-                Log(MODE, $"Exception: {ex.GetType()} {ex.Message}");
+                Log(MODE, "aria2c!");
+                Program.Aria2cDownload(PageFolderPath, fileName, fileUrl);
             }
+            DownloadCache[sha256] = path;
+            Utils.SetTime(path, Datetime, DatetimeEdited);
         }
-
+        catch (Exception ex)
+        {
+            Log(MODE, $"Exception: {ex.GetType()} {ex.Message}");
+        }
     }
     public bool SkipDownloadIfAlreadyDone(string path, in Array256bit sha256, ReadOnlySpan<char> mode)
     {
@@ -352,7 +397,7 @@ sealed class PostContext(
             {
                 Regex pattern = handler.Pattern;
                 await handler.ProcessMatches(this, content, usedLinks,
-                    pattern.Matches(content).Append(pattern.Match(Post.Post.Embed.URL ?? ""))).C();
+                    pattern.Matches(content).Append(pattern.Match(Post.Embed.URL ?? ""))).C();
             }
             catch (Exception ex)
             {

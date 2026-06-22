@@ -1,3 +1,4 @@
+using System.Net.Http.Headers;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -5,10 +6,12 @@ namespace KeSpider.OutlinkHandlers;
 
 sealed partial class GoogleDriveOutlinkHandler : IOutlinkHandler
 {
-    [GeneratedRegex(@"(?<url>https://drive\.google\.com/(?:file/d|drive/folders)/[^""'<>\s]+)")]
+    [GeneratedRegex(@"https://drive\.google\.com/(?:file/d|drive/folders)/[^""'<>\s]+")]
     internal static partial Regex RegGoogleDrive();
-    [GeneratedRegex(@"(?<url>https://drive\.google\.com/file/d/(?<id>[^""'<>\s?#/]+))")]
+    [GeneratedRegex(@"(?<=https://drive\.google\.com/file/d/)[^""'<>\s?#/&]+")]
     internal static partial Regex RegGoogleDriveFile();
+    [GeneratedRegex(@"(?<=name=""at""\s+value="")[^""]+")]
+    internal static partial Regex RegGoogleDriveIntermediatePageAt();
     public static GoogleDriveOutlinkHandler Instance { get; } = new();
     public Regex Pattern => RegGoogleDrive();
     public async ValueTask ProcessMatches(
@@ -22,7 +25,7 @@ sealed partial class GoogleDriveOutlinkHandler : IOutlinkHandler
         {
             if (!m.Success)
                 continue;
-            string text = m.Groups["url"].Value;
+            string text = m.Value;
             if (!usedLinks.Add(text))
                 continue;
             string fileName = Utils.ReplaceInvalidFileNameChars(text) + ".placeholder.txt";
@@ -37,59 +40,86 @@ sealed partial class GoogleDriveOutlinkHandler : IOutlinkHandler
                 continue;
             }
             Utils.SaveFile(text, fileName, context.PageFolderPath, context.Datetime, context.DatetimeEdited, Program.SaveModeOutlink);
-            Match mm = RegGoogleDriveFile().Match(text);
-            if (mm.Success)
+            if (!RegGoogleDriveFile().ValueMatch(text, out ValueMatch mm))
+                continue;
+            ReadOnlySpan<char> gdid = text.AsSpan(mm.Index, mm.Length);
+            if (gDriveIDs.GetAlternateLookup<ReadOnlySpan<char>>().Contains(gdid))
+                continue;
+            char[] gdidOnHeap = gdid.ToArray();
+            string? name;
+            string urlDirect = $"https://drive.usercontent.google.com/download?export=download&authuser=0&confirm=t&id={gdid}";
+            using (HttpRequestMessage pageReq = new(HttpMethod.Get, urlDirect) { Headers = { Range = new(0, 0) } })
+            using (HttpResponseMessage pageResp = await context.Client.SendAsync(pageReq, HttpCompletionOption.ResponseHeadersRead).C())
             {
-                string gdid = mm.Groups["id"].Value;
-                if (gDriveIDs.Contains(gdid))
-                    continue;
-                string urlDirect = $"https://drive.usercontent.google.com/download?export=download&authuser=0&confirm=t&id={gdid}";
-                using HttpRequestMessage headReq = new(HttpMethod.Head, urlDirect);
-                using HttpResponseMessage headResp = await context.Client.SendAsync(headReq).C();
-                if (!headResp.IsSuccessStatusCode)
+                if (!pageResp.IsSuccessStatusCode)
                 {
-                    PostContext.Log(IOutlinkHandler.MODE, $"Status code {(int)headResp.StatusCode} {headResp.StatusCode}");
+                    PostContext.Log(IOutlinkHandler.MODE, $"Status code {(int)pageResp.StatusCode} {pageResp.StatusCode}");
                     continue;
                 }
-                if (headResp.Content.Headers.ContentDisposition?.FileName is not null)
+                ContentDispositionHeaderValue? cd = null;
+                if (pageResp.Content.Headers.ContentDisposition is not null)
+                    cd = pageResp.Content.Headers.ContentDisposition;
+                else
+                {
+                    // the intermediate page is triggered
+                    ReadOnlySpan<char> body = await pageResp.Content.ReadAsStringAsync().C();
+                    if (RegGoogleDriveIntermediatePageAt().ValueMatch(body, out mm))
+                    {
+                        ReadOnlySpan<char> at = text.AsSpan(mm.Index, mm.Length);
+                        urlDirect = $"{urlDirect}&at={at}";
+                        using HttpRequestMessage headReq = new(HttpMethod.Head, urlDirect);
+                        using HttpResponseMessage headResp = await context.Client.SendAsync(headReq).C();
+                        if (!headResp.IsSuccessStatusCode)
+                        {
+                            PostContext.Log(IOutlinkHandler.MODE, $"Status code {(int)pageResp.StatusCode} {pageResp.StatusCode}");
+                            continue;
+                        }
+                        cd = headResp.Content.Headers.ContentDisposition;
+                    }
+                    else
+                    {
+                        PostContext.Log(IOutlinkHandler.MODE, "Failed to get file from GoogleDrive:");
+                        PostContext.Log(IOutlinkHandler.MODE, body);
+                        continue;
+                    }
+                }
+                if (cd?.FileName is not null)
                 {
                     // In this API, GoogleDrive will send filename in "filename" with UTF-8 encoding, not Latin-1.
                     // And the "filename*" will not be provided.
-                    headResp.Content.Headers.ContentDisposition.FileName = Encoding.UTF8.GetString(
-                        Encoding.Latin1.GetBytes(headResp.Content.Headers.ContentDisposition.FileName));
+                    cd.FileName = Encoding.UTF8.GetString(Encoding.Latin1.GetBytes(cd.FileName));
                 }
-                string? name = headResp.Content.Headers.ContentDisposition?.FileNameStar
-                            ?? headResp.Content.Headers.ContentDisposition?.FileName?.Trim('"')
-                            ?? headResp.RequestMessage?.RequestUri?.AbsolutePath
-                            ?? "file";
-                if (context.PrepareDownload(
-                    Path.GetFileName(name),
-                    index,
-                    out fileName,
-                    out path,
-                    out string? fileNameNoExt,
-                    out string? pathNoExt,
-                    IOutlinkHandler.MODE,
-                    "o"))
-                {
-                    PostContext.Log(IOutlinkHandler.MODE, "Pass Extracted Archive File!");
-                    continue;
-                }
-                if (!PostContext.SkipDownloadIfAlreadyDone(path, IOutlinkHandler.MODE, Program.SaveModeOutlink)
-                    || File.Exists($"{path}.aria2"))
-                {
-                    PostContext.Log(IOutlinkHandler.MODE, "aria2c!");
-                    Program.Aria2cDownload(context.PageFolderPath, fileName, urlDirect);
-                }
-                Utils.SetTime(path, context.Datetime, context.DatetimeEdited);
-                if (fileNameNoExt is not null
-                    && pathNoExt is not null
-                    && !Directory.Exists(pathNoExt)
-                    && !File.Exists(pathNoExt)
-                    && PostContext.IsArchiveExtension(Path.GetExtension(path)))
-                    context.ArchiveParts.Add(pathNoExt, (path, null));
-                gDriveIDs.Add(gdid);
+                name = cd?.FileNameStar
+                    ?? cd?.FileName?.Trim('"')
+                    ?? "file";
             }
+            if (context.PrepareDownload(
+                Path.GetFileName(name),
+                index,
+                out fileName,
+                out path,
+                out string? fileNameNoExt,
+                out string? pathNoExt,
+                IOutlinkHandler.MODE,
+                "o"))
+            {
+                PostContext.Log(IOutlinkHandler.MODE, "Pass Extracted Archive File!");
+                continue;
+            }
+            if (!PostContext.SkipDownloadIfAlreadyDone(path, IOutlinkHandler.MODE, Program.SaveModeOutlink)
+                || File.Exists($"{path}.aria2"))
+            {
+                PostContext.Log(IOutlinkHandler.MODE, "aria2c!");
+                Program.Aria2cDownload(context.PageFolderPath, fileName, urlDirect);
+            }
+            Utils.SetTime(path, context.Datetime, context.DatetimeEdited);
+            if (fileNameNoExt is not null
+                && pathNoExt is not null
+                && !Directory.Exists(pathNoExt)
+                && !File.Exists(pathNoExt)
+                && PostContext.IsArchiveExtension(Path.GetExtension(path)))
+                context.ArchiveParts.Add(pathNoExt, (path, null));
+            gDriveIDs.GetAlternateLookup<ReadOnlySpan<char>>().Add(gdidOnHeap);
         }
     }
 }

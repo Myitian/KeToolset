@@ -1,10 +1,12 @@
 using Microsoft.Win32.SafeHandles;
 using System.Collections.Frozen;
+using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace KeSpider;
 
@@ -19,6 +21,25 @@ static partial class Utils
         => task.ConfigureAwait(false);
     internal static ConfiguredValueTaskAwaitable<TResult> C<TResult>(this ValueTask<TResult> task)
         => task.ConfigureAwait(false);
+    internal static bool ValueMatch(this Regex regex, ReadOnlySpan<char> text, out ValueMatch result)
+    {
+        Regex.ValueMatchEnumerator matches = regex.EnumerateMatches(text);
+        if (matches.MoveNext())
+        {
+            result = matches.Current;
+            return true;
+        }
+        else
+        {
+            result = default;
+            return false;
+        }
+    }
+    internal static bool StartsAndEndsWith(
+        this scoped ReadOnlySpan<char> span,
+        scoped ReadOnlySpan<char> start,
+        scoped ReadOnlySpan<char> end,
+        StringComparison comparisonType) => span.StartsWith(start, comparisonType) && span.EndsWith(end, comparisonType);
     public static void MakeLink(string fileName, string existingFileName)
     {
         if (!HardLink.Create(fileName, existingFileName))
@@ -30,7 +51,7 @@ static partial class Utils
             return time;
         return DateTime.SpecifyKind(time, DateTimeKind.Utc);
     }
-    public static string ReplaceInvalidFileNameChars(ReadOnlySpan<char> source)
+    public static string ReplaceInvalidFileNameChars(scoped ReadOnlySpan<char> source)
     {
         Span<char> span = stackalloc char[source.Length];
         for (int i = 0; i < source.Length; i++)
@@ -42,7 +63,7 @@ static partial class Utils
     }
     public static void SaveFile(string content, string fileName, string pageFolderPath, DateTime createTime, DateTime? editTime = null, SaveMode savemode = SaveMode.Replace)
         => SaveFile(Encoding.UTF8.GetBytes(content), fileName, pageFolderPath, createTime, editTime, savemode);
-    public static void SaveFile(ReadOnlySpan<byte> content, string fileName, string pageFolderPath, DateTime createTime, DateTime? editTime = null, SaveMode savemode = SaveMode.Replace)
+    public static void SaveFile(scoped ReadOnlySpan<byte> content, string fileName, string pageFolderPath, DateTime createTime, DateTime? editTime = null, SaveMode savemode = SaveMode.Replace)
     {
         string path = Path.Combine(pageFolderPath, fileName);
         if (File.Exists(path) && savemode == SaveMode.Skip)

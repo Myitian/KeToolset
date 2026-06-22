@@ -13,7 +13,7 @@ static partial class Regexes
     [GeneratedRegex(@"(?<url>https?:[/\\]{2}(?:[^\x00-\x1f \x7f""<>\^`\{\|\}\.\\/\?#]+\.)+[^\x00-\x1f \x7f""<>\^`\{\|\}\.\\/\?#]+(?:[/\\\?#][^\x00-\x1f \x7f""<>\^`\{\|\}]*)*)")]
     internal static partial Regex RegUrl();
 
-    [GeneratedRegex(@"(?<server>(?:https://[^/]+)?)(?<path>/(?:[0-9a-fA-F]{2}/){2}(?<name>[0-9a-fA-F]+\.[0-9A-Za-z]+))")]
+    [GeneratedRegex(@"(?<server>(?:https://[^/]+)?)(?:/data)?(?<path>/(?:[0-9a-fA-F]{2}/){2}(?<name>[0-9a-fA-F]+\.[0-9A-Za-z]+))")]
     internal static partial Regex RegInlineFile();
 
     [GeneratedRegex(@"(?<url>https?://mega(?:\.co)?\.nz/[^""'<>\s]+)(?:<[^\>]+>)?(?<ext>#[a-zA-Z0-9\-_]+)")]

@@ -111,11 +111,13 @@ static class Program
     public static bool DownloadJson { get; private set; } = true;
     public static bool DownloadFile { get; private set; } = true;
     public static bool DownloadContent { get; private set; } = true;
+    public static bool DownloadComment { get; private set; } = true;
     public static bool DownloadOutlink { get; private set; } = true;
     public static bool DownloadPicture { get; private set; } = true;
     public static SaveMode SaveModeJson { get; private set; } = SaveMode.Replace;
     public static SaveMode SaveModeFile { get; private set; } = SaveMode.Replace;
     public static SaveMode SaveModeContent { get; private set; } = SaveMode.Replace;
+    public static SaveMode SaveModeComment { get; private set; } = SaveMode.Replace;
     public static SaveMode SaveModeOutlink { get; private set; } = SaveMode.ReplaceOrSkip;
     public static SaveMode SaveModePicture { get; private set; } = SaveMode.Replace;
     public static string AutoDetectExecutable(string name)
@@ -180,15 +182,18 @@ static class Program
         Console.WriteLine();
         Console.WriteLine("------");
         Console.WriteLine("Enter Settings:");
-        Console.WriteLine("OverridingEncoding:");
+        Console.WriteLine("DefaultEncoding:");
         string? encName = Console.ReadLine();
         Encoding? encoding = GetEncoding(encName);
+        Console.WriteLine("DefaultPassword:");
+        string? dPassword = Console.ReadLine();
+        dPassword = string.IsNullOrEmpty(dPassword) ? null : dPassword;
 
         Console.WriteLine();
         Console.WriteLine("------");
         Console.WriteLine("Current Settings:");
 
-        Console.WriteLine("OverridingEncoding: " + (encoding?.EncodingName ?? "null"));
+        Console.WriteLine("DefaultEncoding: " + (encoding?.EncodingName ?? "null"));
         Console.WriteLine("download_json: " + DownloadJson);
         Console.WriteLine("download_file: " + DownloadFile);
         Console.WriteLine("download_content: " + DownloadContent);
@@ -214,7 +219,7 @@ static class Program
 
         int i = 0;
         foreach (PostInfo post in posts)
-            i = await ProcessPost(client, posts, encoding, destination, dlCache, i, post).C();
+            i = await ProcessPost(client, encoding, dPassword, posts, destination, dlCache, i, post).C();
 
         Console.WriteLine();
         Console.WriteLine();
@@ -327,8 +332,9 @@ static class Program
     }
     public static async Task<int> ProcessPost(
         HttpClient client,
+        Encoding? defaultEncoding,
+        string? defaultPassword,
         HashSet<PostInfo> posts,
-        Encoding? encoding,
         string destination,
         Dictionary<Array256bit, string> dlCache,
         int i,
@@ -337,16 +343,16 @@ static class Program
         try
         {
             Console.WriteLine($"  * {i * 100.0 / posts.Count,5:f2}% - {++i} of {posts.Count}");
-            (byte[] json, PostRoot? postRoot) = await PostRoot.Request(client, post.Domain, post.Service, post.User, post.ID).C();
-            if (postRoot is null)
+            (byte[] json, Post postRoot) = await Post.Request(client, post.Domain, post.Service, post.User, post.ID).C();
+            if (postRoot.ID is null)
             {
                 Console.WriteLine($"Failed to get post https://{post.Domain}/api/v1/{post.Service}/user/{post.User}/post/{postRoot}");
                 return i;
             }
-            ReadOnlySpan<char> rawName = Utils.XTrim(postRoot.Post.Title);
+            ReadOnlySpan<char> rawName = Utils.XTrim(postRoot.Title);
             string pagename = Utils.ReplaceInvalidFileNameChars(rawName.TrimEnd(" ."));
-            DateTime datetime = Utils.NormalizeTime(postRoot.Post.Published).ToLocalTime();
-            DateTime datetimeEdited = Utils.NormalizeTime(postRoot.Post.Edited ?? postRoot.Post.Published).ToLocalTime();
+            DateTime datetime = Utils.NormalizeTime(postRoot.Published).ToLocalTime();
+            DateTime datetimeEdited = Utils.NormalizeTime(postRoot.Edited ?? postRoot.Published).ToLocalTime();
             string pagenameWithID = $"{post.ID}_{pagename}";
             string pageFolderPath = Path.Combine(destination, pagenameWithID);
 
@@ -359,18 +365,38 @@ static class Program
             }
             Console.WriteLine($"  >> {post.ID} {rawName}");
             DirectoryInfo dir = Directory.CreateDirectory(pageFolderPath);
-            PostContext context = new(client, encoding, dlCache, postRoot, datetime, datetimeEdited, pageFolderPath);
+            if (!postRoot.HasFull && dir.EnumerateFileSystemInfos().Any())
+            {
+                Console.WriteLine($"  !! Post {post.ID} is not fully downloaded, skipping.");
+                return i;
+            }
+            PostContext context = new(client, defaultEncoding, defaultPassword, dlCache, postRoot, datetime, datetimeEdited, pageFolderPath);
 
             string? content = null;
             if (DownloadContent || DownloadOutlink)
-                content = postRoot.Post.Content;
+                content = postRoot.Content;
+
+            byte[]? rawComments = null;
+            List<Comment>? comments = null;
+            if (DownloadComment || DownloadOutlink)
+                (rawComments, comments) = await Comment.Request(client, post.Domain, post.Service, post.User, post.ID).C();
 
             if (DownloadJson)
                 context.DownloadJson(json);
             if (DownloadContent && content != null)
                 context.DownloadContent(content);
+            if (DownloadComment && rawComments != null)
+                context.DownloadComment(rawComments);
             if (DownloadOutlink && content != null)
                 await context.DownloadOutlink(outlinkHandlers, content).C();
+            if (DownloadOutlink && comments != null)
+            {
+                foreach (Comment comment in comments)
+                {
+                    PostContext.Log("COMMENT", $"Detecting outlink in comment #{comment.ID}");
+                    await context.DownloadOutlink(outlinkHandlers, comment.Content).C();
+                }
+            }
             if (DownloadPicture)
                 context.DownloadPicture();
             if (DownloadFile)
